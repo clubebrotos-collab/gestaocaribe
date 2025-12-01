@@ -94,9 +94,9 @@ const App: React.FC = () => {
       if (!client) return prev;
 
       const taxaDecimal = opData.taxa / 100;
-      // Adjusted calculation: Nominal - (Nominal * Rate)
+      // Adjusted calculation: Nominal + (Nominal * Rate)
       const interestAmount = opData.nominalValue * taxaDecimal;
-      const netValue = opData.nominalValue - interestAmount;
+      const netValue = opData.nominalValue + interestAmount;
       
       const newOperation: Operation = {
         ...opData,

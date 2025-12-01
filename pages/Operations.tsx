@@ -56,9 +56,9 @@ const OperationForm: React.FC<{
         const { nominalValue, taxa } = formData;
         if (nominalValue > 0 && taxa > 0) {
             const taxaDecimal = taxa / 100;
-            // Cálculo ajustado: Valor Líquido = Nominal - (Nominal * Taxa)
+            // Cálculo ajustado: Valor Líquido = Nominal + (Nominal * Taxa)
             const jurosCalculado = nominalValue * taxaDecimal;
-            const calculatedNetValue = nominalValue - jurosCalculado;
+            const calculatedNetValue = nominalValue + jurosCalculado;
             setNetValue(calculatedNetValue);
         } else if (nominalValue > 0) {
             setNetValue(nominalValue);
