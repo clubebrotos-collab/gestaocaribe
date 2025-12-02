@@ -30,36 +30,17 @@ const UserForm: React.FC<{
     const [errors, setErrors] = useState<Partial<Record<keyof typeof formData, string>>>({});
 
     const validate = (): boolean => {
-        const newErrors: Partial<Record<keyof typeof formData, string>> = {};
-        if (!formData.nome.trim()) newErrors.nome = 'O nome é obrigatório.';
-        if (!formData.email.trim()) {
-            newErrors.email = 'O email é obrigatório.';
-        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-            newErrors.email = 'Formato de email inválido.';
-        }
-        if (!user && !formData.password) { // Password required only for new users
-            newErrors.password = 'A senha é obrigatória para novos usuários.';
-        }
-
-        setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
+        // Validation removed as per request for optional fields
+        return true;
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
-        if (errors[name as keyof typeof errors]) {
-             setErrors(prev => {
-                const newErrors = { ...prev };
-                delete newErrors[name as keyof typeof errors];
-                return newErrors;
-            });
-        }
     };
     
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!validate()) return;
         const dataToSubmit = user ? { ...user, ...formData } : formData;
         onSubmit(dataToSubmit as NewUser | User);
     };
@@ -73,13 +54,11 @@ const UserForm: React.FC<{
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-slate-300 mb-1">Nome Completo</label>
-                    <input name="nome" value={formData.nome} onChange={handleChange} className={`${inputBaseClasses} ${errors.nome ? inputErrorClasses : inputNormalClasses}`} />
-                     {errors.nome && <p className="text-red-400 text-xs mt-1">{errors.nome}</p>}
+                    <input name="nome" value={formData.nome} onChange={handleChange} className={`${inputBaseClasses} ${inputNormalClasses}`} />
                 </div>
                  <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Email</label>
-                    <input type="email" name="email" value={formData.email} onChange={handleChange} className={`${inputBaseClasses} ${errors.email ? inputErrorClasses : inputNormalClasses}`} />
-                     {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email}</p>}
+                    <input type="email" name="email" value={formData.email} onChange={handleChange} className={`${inputBaseClasses} ${inputNormalClasses}`} />
                 </div>
                  <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Papel / Função</label>
@@ -91,8 +70,7 @@ const UserForm: React.FC<{
                 </div>
                  <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-slate-300 mb-1">Senha</label>
-                    <input type="password" name="password" value={formData.password} onChange={handleChange} className={`${inputBaseClasses} ${errors.password ? inputErrorClasses : inputNormalClasses}`} placeholder={user ? "Deixe em branco para não alterar" : "••••••••"} />
-                     {errors.password && <p className="text-red-400 text-xs mt-1">{errors.password}</p>}
+                    <input type="password" name="password" value={formData.password} onChange={handleChange} className={`${inputBaseClasses} ${inputNormalClasses}`} placeholder={user ? "Deixe em branco para não alterar" : "••••••••"} />
                 </div>
             </div>
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-4">

@@ -120,20 +120,15 @@ const OperationForm: React.FC<{
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!clientId) {
-            addNotification("Por favor, selecione um cliente.", "error");
-            return;
-        }
+        
+        // Removed mandatory check for clientId
+        // Removed check for nominalValue > 0
         
         const nominalVal = parseCurrencyInput(formData.nominalValue);
-        if (isNaN(nominalVal) || nominalVal <= 0) {
-             addNotification("O valor nominal deve ser maior que zero.", "error");
-             return;
-        }
 
         onSubmit({ 
             ...formData, 
-            clientId: parseInt(clientId, 10),
+            clientId: clientId ? parseInt(clientId, 10) : 0, // 0 indicates no client selected
             nominalValue: nominalVal,
             taxa: parseFloat(formData.taxa) || 0,
             type: formData.type as 'duplicata' | 'cheque'
@@ -145,8 +140,8 @@ const OperationForm: React.FC<{
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Cliente</label>
-                    <select name="clientId" value={clientId} onChange={handleChange} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" required>
-                        <option value="" disabled>Selecione um cliente</option>
+                    <select name="clientId" value={clientId} onChange={handleChange} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100">
+                        <option value="">Selecione um cliente (Opcional)</option>
                         {clients.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                     </select>
                 </div>
@@ -171,7 +166,7 @@ const OperationForm: React.FC<{
                 )}
                 <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Número do Título</label>
-                    <input name="titleNumber" value={formData.titleNumber} onChange={handleChange} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" required/>
+                    <input name="titleNumber" value={formData.titleNumber} onChange={handleChange} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" />
                 </div>
                  <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Valor Nominal (R$)</label>
@@ -183,7 +178,6 @@ const OperationForm: React.FC<{
                         onChange={handleChange} 
                         data-mascara="moeda"
                         className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" 
-                        required 
                     />
                 </div>
                  {creditWarning && (
@@ -197,7 +191,7 @@ const OperationForm: React.FC<{
                 </div>
                  <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Data de Vencimento</label>
-                    <input type="date" name="dueDate" value={formData.dueDate} onChange={handleChange} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" required />
+                    <input type="date" name="dueDate" value={formData.dueDate} onChange={handleChange} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" />
                 </div>
                  <div className="md:col-span-2 grid grid-cols-2 gap-4 items-end">
                      <div>

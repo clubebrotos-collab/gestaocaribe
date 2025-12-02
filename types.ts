@@ -47,7 +47,9 @@ export interface Recebimento {
   observacoes?: string;
 }
 
-export type NewRecebimento = Omit<Recebimento, 'id'>;
+export type NewRecebimento = Omit<Recebimento, 'id'> & {
+  newDueDate?: string; // Campo opcional para prorrogação de vencimento
+};
 
 export interface User {
   id: number;

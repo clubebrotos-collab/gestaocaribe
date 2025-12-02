@@ -3,11 +3,12 @@ import React, { useState, useMemo } from 'react';
 import Card from '../components/Card';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
-import { CreditCard, Trash2, Calendar, Banknote, StickyNote } from 'lucide-react';
+import { CreditCard, Trash2, Calendar, Banknote, StickyNote, Clock } from 'lucide-react';
 import type { Recebimento, NewRecebimento, Operation, FormaPagamento } from '../types';
 import { formatDate, formatCurrency, formatCurrencyInput, parseCurrencyInput } from '../lib/utils';
 import { useNotification } from '../components/Notification';
 import EmptyState from '../components/EmptyState';
+import { addDays, parseISO } from 'date-fns';
 
 interface ReceiptsPageProps {
   receipts: Recebimento[];
@@ -30,6 +31,7 @@ const ReceiptForm: React.FC<{
     const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>('pix');
     const [observacoes, setObservacoes] = useState('');
     const [dataRecebimento, setDataRecebimento] = useState(new Date().toISOString().split('T')[0]);
+    const [newDueDate, setNewDueDate] = useState('');
     const [summaryKey, setSummaryKey] = useState(0);
     const [isInterestOnly, setIsInterestOnly] = useState(false);
     const { addNotification } = useNotification();
@@ -59,11 +61,21 @@ const ReceiptForm: React.FC<{
             setPrincipalPago(outstandingBalance.principal > 0 ? formatCurrencyInput((outstandingBalance.principal * 100).toFixed(0)) : '');
             setJurosPago(outstandingBalance.juros > 0 ? formatCurrencyInput((outstandingBalance.juros * 100).toFixed(0)) : '');
             
+            // Suggest new due date (current due date + 30 days)
+            try {
+                const currentDue = parseISO(selectedOperation.dueDate);
+                const suggestedDate = addDays(currentDue, 30).toISOString().split('T')[0];
+                setNewDueDate(suggestedDate);
+            } catch (e) {
+                setNewDueDate('');
+            }
+
             setIsInterestOnly(false); 
         } else {
             setTotalRecebido('');
             setPrincipalPago('');
             setJurosPago('');
+            setNewDueDate('');
         }
     }, [selectedOperation, outstandingBalance]);
     
@@ -144,17 +156,17 @@ const ReceiptForm: React.FC<{
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        
         if (!operationId) {
-            addNotification('Por favor, selecione uma operação.', 'error');
-            return;
+             addNotification('Por favor, selecione uma operação.', 'error');
+             return;
         }
+
         const numTotal = parseCurrencyInput(totalRecebido);
         
-        if (numTotal <= 0) {
-            addNotification('O valor recebido deve ser maior que zero.', 'error');
-            return;
-        }
-        onSubmit({
+        // Removed validation for value > 0 to allow optional empty receipts if user desires (though unusual)
+        
+        const submitData: NewRecebimento = {
             operationId: parseInt(operationId),
             data_recebimento: dataRecebimento,
             valor_total_recebido: numTotal,
@@ -162,7 +174,17 @@ const ReceiptForm: React.FC<{
             valor_juros_pago: parseCurrencyInput(jurosPago) || 0,
             forma_pagamento: formaPagamento,
             observacoes: observacoes
-        });
+        };
+
+        if (isInterestOnly && newDueDate) {
+            submitData.newDueDate = newDueDate;
+            // Append note about extension if not already present
+            if (!observacoes.toLowerCase().includes('prorrogação')) {
+                submitData.observacoes = (observacoes ? observacoes + '. ' : '') + `Prorrogação para ${formatDate(newDueDate)}`;
+            }
+        }
+
+        onSubmit(submitData);
     };
 
     const availableOperations = operations.filter(op => op.status !== 'pago');
@@ -231,6 +253,24 @@ const ReceiptForm: React.FC<{
                         Amortizar apenas Juros (Não abater do Principal)
                     </label>
                 </div>
+
+                {isInterestOnly && (
+                    <div className="md:col-span-2 bg-sky-900/20 p-3 rounded-md border border-sky-700/30 animate-fade-in-up">
+                        <label className="block text-sm font-medium text-sky-400 mb-1 flex items-center gap-2">
+                            <Clock className="w-4 h-4" />
+                            Prorrogar Vencimento Para
+                        </label>
+                        <input 
+                            type="date" 
+                            value={newDueDate} 
+                            onChange={e => setNewDueDate(e.target.value)} 
+                            className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100 focus:ring-sky-500 focus:border-sky-500" 
+                        />
+                        <p className="text-xs text-slate-400 mt-1">
+                            A data de vencimento da operação será atualizada para esta data.
+                        </p>
+                    </div>
+                )}
 
                 <div className="bg-slate-900/50 p-4 rounded-lg md:col-span-2">
                     <h4 className="font-semibold text-slate-200 mb-2">Alocação de Valores (Ajuste se necessário)</h4>

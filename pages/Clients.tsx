@@ -51,21 +51,6 @@ const ClientForm: React.FC<{ client?: Client | null; onSubmit: (data: NewClient 
 
     const validate = (): Partial<Record<keyof typeof formData, string>> => {
         const newErrors: Partial<Record<keyof typeof formData, string>> = {};
-        const unmaskedCpfCnpj = formData.cpf_cnpj.replace(/\D/g, '');
-        
-        if (!formData.nome.trim()) {
-            newErrors.nome = 'O nome é obrigatório.';
-        }
-
-        if (!unmaskedCpfCnpj) {
-            newErrors.cpf_cnpj = 'O CPF/CNPJ é obrigatório.';
-        } else if (unmaskedCpfCnpj.length !== 11 && unmaskedCpfCnpj.length !== 14) {
-            newErrors.cpf_cnpj = 'CPF/CNPJ inválido. Deve conter 11 (CPF) ou 14 (CNPJ) dígitos.';
-        }
-
-        if (formData.email && !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(formData.email)) {
-            newErrors.email = 'Formato de email inválido.';
-        }
         
         // Parse currency back to number for validation
         const limite = parseCurrencyInput(formData.limite_credito);
@@ -130,12 +115,12 @@ const ClientForm: React.FC<{ client?: Client | null; onSubmit: (data: NewClient 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Nome / Razão Social</label>
-                    <input name="nome" value={formData.nome} onChange={handleChange} className={`${inputBaseClasses} ${errors.nome ? inputErrorClasses : inputNormalClasses}`} required />
+                    <input name="nome" value={formData.nome} onChange={handleChange} className={`${inputBaseClasses} ${errors.nome ? inputErrorClasses : inputNormalClasses}`} />
                     {errors.nome && <p className="text-red-400 text-xs mt-1">{errors.nome}</p>}
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">CPF / CNPJ</label>
-                    <input name="cpf_cnpj" value={formData.cpf_cnpj} onChange={handleChange} className={`${inputBaseClasses} ${errors.cpf_cnpj ? inputErrorClasses : inputNormalClasses}`} required />
+                    <input name="cpf_cnpj" value={formData.cpf_cnpj} onChange={handleChange} className={`${inputBaseClasses} ${errors.cpf_cnpj ? inputErrorClasses : inputNormalClasses}`} />
                     {errors.cpf_cnpj && <p className="text-red-400 text-xs mt-1">{errors.cpf_cnpj}</p>}
                 </div>
                  <div>

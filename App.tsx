@@ -183,7 +183,14 @@ const App: React.FC = () => {
         return data;
     } catch (error: any) {
         console.error("Error adding client:", error);
-        addNotification(`Erro ao adicionar cliente: ${error.message}`, 'error');
+        
+        let msg = `Erro ao adicionar cliente: ${error.message}`;
+        // Código 23505 é violação de constraint unique no Postgres
+        if (error.code === '23505' || error.message?.includes('clients_cpf_cnpj_key')) {
+            msg = "Já existe um cliente cadastrado com este CPF/CNPJ.";
+        }
+        
+        addNotification(msg, 'error');
         throw error; // Re-throw to be caught by the form
     }
   }, [addNotification]);
@@ -208,7 +215,13 @@ const App: React.FC = () => {
         setClients(prev => prev.map(c => c.id === updatedClient.id ? updatedClient : c));
     } catch (error: any) {
         console.error("Error updating client:", error);
-        addNotification(`Erro ao atualizar cliente: ${error.message}`, 'error');
+        
+        let msg = `Erro ao atualizar cliente: ${error.message}`;
+        if (error.code === '23505' || error.message?.includes('clients_cpf_cnpj_key')) {
+            msg = "Este CPF/CNPJ já pertence a outro cliente.";
+        }
+        
+        addNotification(msg, 'error');
     }
   }, [addNotification]);
   
@@ -234,26 +247,37 @@ const App: React.FC = () => {
 
   const handleAddOperation = useCallback(async (opData: NewOperation) => {
     const client = clients.find(c => c.id === opData.clientId);
-    if (!client) return;
+    // Removed strict check if (!client) return; to allow orphan operations if DB supports it (e.g. opData.clientId === 0)
 
     const taxaDecimal = opData.taxa / 100;
+    // Lógica ajustada: Valor Líquido = Nominal + (Nominal * Taxa)
+    // Antes subtraia, agora soma (modelo empréstimo/juros simples)
     const interestAmount = opData.nominalValue * taxaDecimal;
     const netValue = opData.nominalValue + interestAmount;
     
     try {
+        const payload: any = {
+            type: opData.type,
+            title_number: opData.titleNumber,
+            nominal_value: opData.nominalValue,
+            net_value: netValue,
+            issue_date: opData.issueDate,
+            due_date: opData.dueDate,
+            taxa: opData.taxa,
+            status: 'aberto'
+        };
+
+        // If clientId is valid (greater than 0), include it. Supabase will handle NULL if excluded (if SQL allows).
+        // Since our SQL allows NULL client_id (based on README update plan), we can just pass null if clientId is 0.
+        if (opData.clientId && opData.clientId > 0) {
+            payload.client_id = opData.clientId;
+        } else {
+             payload.client_id = null;
+        }
+
         const { data, error } = await supabase
             .from('operations')
-            .insert([{
-                client_id: opData.clientId,
-                type: opData.type,
-                title_number: opData.titleNumber,
-                nominal_value: opData.nominalValue,
-                net_value: netValue,
-                issue_date: opData.issueDate,
-                due_date: opData.dueDate,
-                taxa: opData.taxa,
-                status: 'aberto'
-            }])
+            .insert([payload])
             .select()
             .single();
 
@@ -262,8 +286,8 @@ const App: React.FC = () => {
         // Map back to CamelCase for local state
         const newOperation: Operation = {
             id: data.id,
-            clientId: data.client_id,
-            clientName: client.nome, // Enriched from local state
+            clientId: data.client_id || 0,
+            clientName: client ? client.nome : 'Cliente Desconhecido', 
             type: data.type,
             titleNumber: data.title_number,
             nominalValue: data.nominal_value,
@@ -345,13 +369,36 @@ const App: React.FC = () => {
         // 2. Check and Update Operation Status logic
         const operation = operations.find(op => op.id === receiptData.operationId);
         if (operation) {
-            // Logic Update: Only close operation if PRINCIPAL PAID >= NOMINAL VALUE
-            const totalPrincipalPaid = receipts
-                .filter(r => r.operationId === receiptData.operationId)
-                .reduce((sum, r) => sum + r.valor_principal_pago, 0) + receiptData.valor_principal_pago;
+            
+            // Check for Date Extension (Prorrogação)
+            if (receiptData.newDueDate) {
+                // If extending date, update due date in DB and ensure status is 'aberto'
+                const { error: opUpdateError } = await supabase
+                    .from('operations')
+                    .update({ 
+                        due_date: receiptData.newDueDate,
+                        status: 'aberto' 
+                    })
+                    .eq('id', operation.id);
 
-            if (totalPrincipalPaid >= operation.nominalValue) {
-                 await handleUpdateOperationStatus(operation.id, 'pago');
+                if (opUpdateError) throw opUpdateError;
+
+                // Update local state
+                setOperations(prev => prev.map(op => 
+                    op.id === operation.id 
+                    ? { ...op, dueDate: receiptData.newDueDate!, status: 'aberto' } 
+                    : op
+                ));
+
+            } else {
+                // Logic Update: Only close operation if PRINCIPAL PAID >= NOMINAL VALUE
+                const totalPrincipalPaid = receipts
+                    .filter(r => r.operationId === receiptData.operationId)
+                    .reduce((sum, r) => sum + r.valor_principal_pago, 0) + receiptData.valor_principal_pago;
+
+                if (totalPrincipalPaid >= operation.nominalValue) {
+                     await handleUpdateOperationStatus(operation.id, 'pago');
+                }
             }
         }
     } catch (error: any) {
@@ -421,8 +468,6 @@ const App: React.FC = () => {
             papel: updatedUser.papel
         };
         // Only update password if provided (non-empty)
-        // Note: The UI logic passes the existing password if not changed, 
-        // but let's be safe and check if it's the preserved one.
         if (updatedUser.password) {
             updatePayload.password = updatedUser.password;
         }
