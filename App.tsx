@@ -11,198 +11,456 @@ import LoginPage from './pages/Login';
 import UsersPage from './pages/UsersPage';
 import InterestCalculatorPage from './pages/InterestCalculatorPage';
 import type { Client, Operation, NewClient, NewOperation, Recebimento, NewRecebimento, User, OperationStatus, Reminder, NewUser } from './types';
-import { MOCK_CLIENTS, MOCK_OPERATIONS, MOCK_RECEBIMENTOS, MOCK_USERS } from './lib/mockData';
 import { isPast, isToday, parseISO, differenceInDays } from 'date-fns';
-import useLocalStorageState from './hooks/useLocalStorageState';
+import { supabase } from './lib/supabase';
+import { useNotification } from './components/Notification';
 
 const App: React.FC = () => {
   const [activePage, setActivePage] = useState('Painel de Controle');
-  const [clients, setClients] = useLocalStorageState<Client[]>('factoring_clients', MOCK_CLIENTS);
-  const [operations, setOperations] = useLocalStorageState<Operation[]>('factoring_operations', MOCK_OPERATIONS);
-  const [receipts, setReceipts] = useLocalStorageState<Recebimento[]>('factoring_receipts', MOCK_RECEBIMENTOS);
-  const [users, setUsers] = useLocalStorageState<User[]>('factoring_users', MOCK_USERS);
+  
+  // Data State - Now fetching from Supabase, initialized as empty
+  const [clients, setClients] = useState<Client[]>([]);
+  const [operations, setOperations] = useState<Operation[]>([]);
+  const [receipts, setReceipts] = useState<Recebimento[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [preselectedClientId, setPreselectedClientId] = useState<number | null>(null);
-  const [dismissedReminderIds, setDismissedReminderIds] = useLocalStorageState<number[]>('dismissedReminders', []);
+  const [dismissedReminderIds, setDismissedReminderIds] = useState<number[]>(() => {
+      // Keep dismissed reminders in local storage for UX preference
+      try {
+          const stored = localStorage.getItem('dismissedReminders');
+          return stored ? JSON.parse(stored) : [];
+      } catch { return []; }
+  });
+  const [isLoading, setIsLoading] = useState(true);
   
   // Mobile Menu State
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  const { addNotification } = useNotification();
 
+  // Save dismissed reminders to local storage
   useEffect(() => {
-    setOperations(prevOps => {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      let hasChanges = false;
+      localStorage.setItem('dismissedReminders', JSON.stringify(dismissedReminderIds));
+  }, [dismissedReminderIds]);
 
-      const updatedOps = prevOps.map(op => {
-        if (op.status === 'aberto') {
-          const dueDate = parseISO(op.dueDate);
-          if (isPast(dueDate) && !isToday(dueDate)) {
-            hasChanges = true;
-            // FIX: Explicitly define the new status type to prevent TypeScript from widening it to `string`.
-            const newStatus: OperationStatus = 'atrasado';
-            return { ...op, status: newStatus };
-          }
+  // FETCH DATA FROM SUPABASE
+  const fetchData = useCallback(async () => {
+      setIsLoading(true);
+      try {
+          // 1. Fetch Users
+          const { data: usersData, error: usersError } = await supabase.from('users').select('*');
+          if (usersError) throw usersError;
+          setUsers(usersData || []);
+
+          // 2. Fetch Clients
+          const { data: clientsData, error: clientsError } = await supabase.from('clients').select('*');
+          if (clientsError) throw clientsError;
+          // Sort clients by ID descending for UI consistency
+          setClients((clientsData || []).sort((a,b) => b.id - a.id));
+
+          // 3. Fetch Operations (with Client Name via join if possible, but manual mapping is safer given the simple types)
+          const { data: opsData, error: opsError } = await supabase.from('operations').select(`
+            *,
+            clients (nome)
+          `);
+          if (opsError) throw opsError;
+
+          // Map snake_case DB columns to camelCase TypeScript types
+          const mappedOps: Operation[] = (opsData || []).map((op: any) => ({
+              id: op.id,
+              clientId: op.client_id,
+              clientName: op.clients?.nome || 'Cliente Desconhecido',
+              type: op.type,
+              titleNumber: op.title_number,
+              nominalValue: op.nominal_value,
+              netValue: op.net_value,
+              issueDate: op.issue_date,
+              dueDate: op.due_date,
+              taxa: op.taxa,
+              status: op.status
+          })).sort((a,b) => b.id - a.id);
+          
+          // Auto-update overdue status logic
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          
+          const updatedOps = mappedOps.map(op => {
+             if (op.status === 'aberto') {
+                  const dueDate = parseISO(op.dueDate);
+                  if (isPast(dueDate) && !isToday(dueDate)) {
+                      // If it's overdue in UI but 'aberto' in DB, we should technically update DB,
+                      // but for read-performance, we just show it as overdue or rely on backend jobs.
+                      // For this app, let's update local state visually. 
+                      // Ideally, we would fire an update to Supabase here if we wanted persistence of 'atrasado'.
+                      return { ...op, status: 'atrasado' as OperationStatus };
+                  }
+             }
+             return op;
+          });
+
+          setOperations(updatedOps);
+
+          // 4. Fetch Receipts
+          const { data: receiptsData, error: receiptsError } = await supabase.from('receipts').select('*');
+          if (receiptsError) throw receiptsError;
+
+          const mappedReceipts: Recebimento[] = (receiptsData || []).map((r: any) => ({
+              id: r.id,
+              operationId: r.operation_id,
+              data_recebimento: r.data_recebimento,
+              valor_total_recebido: r.valor_total_recebido,
+              valor_principal_pago: r.valor_principal_pago,
+              valor_juros_pago: r.valor_juros_pago,
+              forma_pagamento: r.forma_pagamento,
+              observacoes: r.observacoes
+          })).sort((a,b) => b.id - a.id);
+
+          setReceipts(mappedReceipts);
+
+      } catch (error: any) {
+          console.error('Error fetching data:', error);
+          addNotification('Erro ao carregar dados do sistema.', 'error');
+      } finally {
+          setIsLoading(false);
+      }
+  }, [addNotification]);
+
+  // Initial Fetch
+  useEffect(() => {
+      fetchData();
+  }, [fetchData]);
+
+
+  const handleLogin = async (email: string, pass: string): Promise<boolean> => {
+    // Direct DB query for MVP login (matches README_DB.md structure)
+    try {
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', email)
+            .eq('password', pass)
+            .single();
+
+        if (error || !data) {
+            return false;
         }
-        return op;
-      });
-      // Only return a new array if changes were made to avoid unnecessary re-renders
-      return hasChanges ? updatedOps : prevOps;
-    });
-  }, []); // Run only on component mount
 
-  const handleLogin = (email: string, pass: string): boolean => {
-    const user = users.find(u => u.email === email && u.password === pass);
-    if (user) {
-      setCurrentUser(user);
-      setActivePage('Painel de Controle');
-      return true;
+        setCurrentUser(data);
+        setActivePage('Painel de Controle');
+        return true;
+    } catch (e) {
+        console.error(e);
+        return false;
     }
-    return false;
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
   };
 
-  const handleAddClient = useCallback((clientData: NewClient): Client => {
-    const newId = clients.length > 0 ? Math.max(...clients.map(c => c.id)) + 1 : 1;
-    const newClient: Client = {
-        ...clientData,
-        id: newId,
-        data_cadastro: new Date().toISOString(),
-    };
-    setClients(prev => [newClient, ...prev]);
-    return newClient;
-  }, [clients, setClients]);
+  const handleAddClient = useCallback(async (clientData: NewClient) => {
+    try {
+        const { data, error } = await supabase
+            .from('clients')
+            .insert([{
+                nome: clientData.nome,
+                cpf_cnpj: clientData.cpf_cnpj,
+                email: clientData.email,
+                telefone: clientData.telefone,
+                endereco: clientData.endereco,
+                limite_credito: clientData.limite_credito,
+                taxa_juros_mensal: clientData.taxa_juros_mensal,
+                data_cadastro: new Date().toISOString()
+            }])
+            .select()
+            .single();
 
-  const handleUpdateClient = useCallback((updatedClient: Client) => {
-    setClients(prev => prev.map(c => c.id === updatedClient.id ? updatedClient : c));
-  }, [setClients]);
+        if (error) throw error;
+
+        setClients(prev => [data, ...prev]);
+        return data;
+    } catch (error: any) {
+        console.error("Error adding client:", error);
+        addNotification(`Erro ao adicionar cliente: ${error.message}`, 'error');
+        throw error; // Re-throw to be caught by the form
+    }
+  }, [addNotification]);
+
+  const handleUpdateClient = useCallback(async (updatedClient: Client) => {
+    try {
+        const { error } = await supabase
+            .from('clients')
+            .update({
+                nome: updatedClient.nome,
+                cpf_cnpj: updatedClient.cpf_cnpj,
+                email: updatedClient.email,
+                telefone: updatedClient.telefone,
+                endereco: updatedClient.endereco,
+                limite_credito: updatedClient.limite_credito,
+                taxa_juros_mensal: updatedClient.taxa_juros_mensal
+            })
+            .eq('id', updatedClient.id);
+
+        if (error) throw error;
+
+        setClients(prev => prev.map(c => c.id === updatedClient.id ? updatedClient : c));
+    } catch (error: any) {
+        console.error("Error updating client:", error);
+        addNotification(`Erro ao atualizar cliente: ${error.message}`, 'error');
+    }
+  }, [addNotification]);
   
-  const handleDeleteClient = useCallback((clientId: number) => {
-    const opsToDelete = operations.filter(op => op.clientId === clientId).map(op => op.id);
-    
-    setReceipts(prev => prev.filter(r => !opsToDelete.includes(r.operationId)));
-    setOperations(prev => prev.filter(op => op.clientId !== clientId));
-    setClients(prev => prev.filter(c => c.id !== clientId));
-  }, [operations, setClients, setOperations, setReceipts]);
-
-  const handleAddOperation = useCallback((opData: NewOperation) => {
-    setOperations(prev => {
-      const client = clients.find(c => c.id === opData.clientId);
-      if (!client) return prev;
-
-      const taxaDecimal = opData.taxa / 100;
-      // Adjusted calculation: Nominal + (Nominal * Rate)
-      const interestAmount = opData.nominalValue * taxaDecimal;
-      const netValue = opData.nominalValue + interestAmount;
-      
-      const newOperation: Operation = {
-        ...opData,
-        id: Math.max(0, ...prev.map(o => o.id)) + 1,
-        clientName: client.nome,
-        netValue: netValue,
-        status: 'aberto',
-      };
-      return [newOperation, ...prev];
-    });
-  }, [clients, setOperations]);
-  
-  const handleDeleteOperation = useCallback((operationId: number) => {
-    setReceipts(prev => prev.filter(r => r.operationId !== operationId));
-    setOperations(prev => prev.filter(op => op.id !== operationId));
-  }, [setOperations, setReceipts]);
-
-  const handleUpdateOperationStatus = useCallback((operationId: number, status: OperationStatus) => {
-    setOperations(prev => prev.map(op => 
-        op.id === operationId ? { ...op, status } : op
-    ));
-  }, [setOperations]);
-
-  const handleAddReceipt = useCallback((receiptData: NewRecebimento) => {
-    setReceipts(prev => {
-        const newReceipt: Recebimento = {
-            ...receiptData,
-            id: Math.max(0, ...prev.map(r => r.id)) + 1,
-        };
-        return [newReceipt, ...prev];
-    });
-
-    setOperations(prevOps => {
-        const operation = prevOps.find(op => op.id === receiptData.operationId);
-        if (!operation) return prevOps;
+  const handleDeleteClient = useCallback(async (clientId: number) => {
+    try {
+        // Cascade delete is enabled in SQL, so deleting client deletes operations and receipts automatically in DB.
+        // We just need to delete the client.
+        const { error } = await supabase.from('clients').delete().eq('id', clientId);
         
-        // Logic Update: Only close operation if PRINCIPAL PAID >= NOMINAL VALUE
-        // Pure interest payments should keep operation open.
-        const totalPrincipalPaid = receipts
-            .filter(r => r.operationId === receiptData.operationId)
-            .reduce((sum, r) => sum + r.valor_principal_pago, 0) + receiptData.valor_principal_pago;
+        if (error) throw error;
 
-        if (totalPrincipalPaid >= operation.nominalValue) {
-             return prevOps.map(op => op.id === receiptData.operationId ? { ...op, status: 'pago' } : op);
+        // Update local state to reflect cascade
+        const opsToDelete = operations.filter(op => op.clientId === clientId).map(op => op.id);
+        setReceipts(prev => prev.filter(r => !opsToDelete.includes(r.operationId)));
+        setOperations(prev => prev.filter(op => op.clientId !== clientId));
+        setClients(prev => prev.filter(c => c.id !== clientId));
+        
+    } catch (error: any) {
+        console.error("Error deleting client:", error);
+        addNotification(`Erro ao excluir cliente: ${error.message}`, 'error');
+    }
+  }, [operations, addNotification]);
+
+  const handleAddOperation = useCallback(async (opData: NewOperation) => {
+    const client = clients.find(c => c.id === opData.clientId);
+    if (!client) return;
+
+    const taxaDecimal = opData.taxa / 100;
+    const interestAmount = opData.nominalValue * taxaDecimal;
+    const netValue = opData.nominalValue + interestAmount;
+    
+    try {
+        const { data, error } = await supabase
+            .from('operations')
+            .insert([{
+                client_id: opData.clientId,
+                type: opData.type,
+                title_number: opData.titleNumber,
+                nominal_value: opData.nominalValue,
+                net_value: netValue,
+                issue_date: opData.issueDate,
+                due_date: opData.dueDate,
+                taxa: opData.taxa,
+                status: 'aberto'
+            }])
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // Map back to CamelCase for local state
+        const newOperation: Operation = {
+            id: data.id,
+            clientId: data.client_id,
+            clientName: client.nome, // Enriched from local state
+            type: data.type,
+            titleNumber: data.title_number,
+            nominalValue: data.nominal_value,
+            netValue: data.net_value,
+            issueDate: data.issue_date,
+            dueDate: data.due_date,
+            taxa: data.taxa,
+            status: data.status,
+        };
+
+        setOperations(prev => [newOperation, ...prev]);
+    } catch (error: any) {
+        console.error("Error adding operation:", error);
+        addNotification(`Erro ao registrar operação: ${error.message}`, 'error');
+    }
+  }, [clients, addNotification]);
+  
+  const handleDeleteOperation = useCallback(async (operationId: number) => {
+    try {
+        const { error } = await supabase.from('operations').delete().eq('id', operationId);
+        if (error) throw error;
+
+        setReceipts(prev => prev.filter(r => r.operationId !== operationId));
+        setOperations(prev => prev.filter(op => op.id !== operationId));
+    } catch (error: any) {
+        addNotification(`Erro ao excluir operação: ${error.message}`, 'error');
+    }
+  }, [addNotification]);
+
+  const handleUpdateOperationStatus = useCallback(async (operationId: number, status: OperationStatus) => {
+      try {
+          const { error } = await supabase
+              .from('operations')
+              .update({ status: status })
+              .eq('id', operationId);
+          
+          if (error) throw error;
+
+          setOperations(prev => prev.map(op => 
+            op.id === operationId ? { ...op, status } : op
+        ));
+      } catch (error: any) {
+          addNotification(`Erro ao atualizar status: ${error.message}`, 'error');
+      }
+  }, [addNotification]);
+
+  const handleAddReceipt = useCallback(async (receiptData: NewRecebimento) => {
+    try {
+        // 1. Insert Receipt
+        const { data, error } = await supabase
+            .from('receipts')
+            .insert([{
+                operation_id: receiptData.operationId,
+                data_recebimento: receiptData.data_recebimento,
+                valor_total_recebido: receiptData.valor_total_recebido,
+                valor_principal_pago: receiptData.valor_principal_pago,
+                valor_juros_pago: receiptData.valor_juros_pago,
+                forma_pagamento: receiptData.forma_pagamento,
+                observacoes: receiptData.observacoes
+            }])
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        const newReceipt: Recebimento = {
+            id: data.id,
+            operationId: data.operation_id,
+            data_recebimento: data.data_recebimento,
+            valor_total_recebido: data.valor_total_recebido,
+            valor_principal_pago: data.valor_principal_pago,
+            valor_juros_pago: data.valor_juros_pago,
+            forma_pagamento: data.forma_pagamento,
+            observacoes: data.observacoes
+        };
+
+        setReceipts(prev => [newReceipt, ...prev]);
+
+        // 2. Check and Update Operation Status logic
+        const operation = operations.find(op => op.id === receiptData.operationId);
+        if (operation) {
+            // Logic Update: Only close operation if PRINCIPAL PAID >= NOMINAL VALUE
+            const totalPrincipalPaid = receipts
+                .filter(r => r.operationId === receiptData.operationId)
+                .reduce((sum, r) => sum + r.valor_principal_pago, 0) + receiptData.valor_principal_pago;
+
+            if (totalPrincipalPaid >= operation.nominalValue) {
+                 await handleUpdateOperationStatus(operation.id, 'pago');
+            }
         }
-        return prevOps;
-    });
+    } catch (error: any) {
+        console.error("Error adding receipt:", error);
+        addNotification(`Erro ao registrar recebimento: ${error.message}`, 'error');
+    }
+  }, [receipts, operations, handleUpdateOperationStatus, addNotification]);
 
-  }, [receipts, setReceipts, setOperations]);
-
-  const handleDeleteReceipt = useCallback((receiptId: number) => {
+  const handleDeleteReceipt = useCallback(async (receiptId: number) => {
     const receiptToDelete = receipts.find(r => r.id === receiptId);
     if (!receiptToDelete) return;
-    
-    setReceipts(prev => prev.filter(r => r.id !== receiptId));
 
-    const operation = operations.find(op => op.id === receiptToDelete.operationId);
-    if (!operation || operation.status !== 'pago') return;
+    try {
+        const { error } = await supabase.from('receipts').delete().eq('id', receiptId);
+        if (error) throw error;
 
-    const remainingReceiptsForOp = receipts.filter(r => r.operationId === receiptToDelete.operationId && r.id !== receiptId);
-    // Check using Principal for reopening logic as well
-    const totalPrincipalPaid = remainingReceiptsForOp.reduce((sum, r) => sum + r.valor_principal_pago, 0);
+        setReceipts(prev => prev.filter(r => r.id !== receiptId));
 
-    if (totalPrincipalPaid < operation.nominalValue) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const dueDate = parseISO(operation.dueDate);
-        const isOverdue = isPast(dueDate) && !isToday(dueDate);
-        
-        const newStatus: OperationStatus = isOverdue ? 'atrasado' : 'aberto';
+        // Re-evaluate operation status
+        const operation = operations.find(op => op.id === receiptToDelete.operationId);
+        if (!operation || operation.status !== 'pago') return;
 
-        setOperations(prev => prev.map(op => 
-            op.id === operation.id ? { ...op, status: newStatus } : op
-        ));
-    }
-  }, [receipts, operations, setOperations, setReceipts]);
+        const remainingReceiptsForOp = receipts.filter(r => r.operationId === receiptToDelete.operationId && r.id !== receiptId);
+        const totalPrincipalPaid = remainingReceiptsForOp.reduce((sum, r) => sum + r.valor_principal_pago, 0);
 
-  const handleAddUser = useCallback((userData: NewUser) => {
-    setUsers(prev => {
-        const newId = prev.length > 0 ? Math.max(...prev.map(u => u.id)) + 1 : 1;
-        const newUser: User = { ...userData, id: newId };
-        return [newUser, ...prev];
-    });
-  }, [setUsers]);
-
-  const handleUpdateUser = useCallback((updatedUser: User) => {
-    setUsers(prev => prev.map(u => {
-        if (u.id === updatedUser.id) {
-            const userWithPreservedPassword = {
-                ...updatedUser,
-                password: updatedUser.password ? updatedUser.password : u.password,
-            };
-            return userWithPreservedPassword;
+        if (totalPrincipalPaid < operation.nominalValue) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const dueDate = parseISO(operation.dueDate);
+            const isOverdue = isPast(dueDate) && !isToday(dueDate);
+            
+            const newStatus: OperationStatus = isOverdue ? 'atrasado' : 'aberto';
+            
+            await handleUpdateOperationStatus(operation.id, newStatus);
         }
-        return u;
-    }));
-  }, [setUsers]);
+    } catch (error: any) {
+        addNotification(`Erro ao excluir recebimento: ${error.message}`, 'error');
+    }
+  }, [receipts, operations, handleUpdateOperationStatus, addNotification]);
 
-  const handleDeleteUser = useCallback((userId: number) => {
+  const handleAddUser = useCallback(async (userData: NewUser) => {
+      try {
+          const { data, error } = await supabase
+            .from('users')
+            .insert([{
+                nome: userData.nome,
+                email: userData.email,
+                papel: userData.papel,
+                password: userData.password
+            }])
+            .select()
+            .single();
+        
+        if (error) throw error;
+        setUsers(prev => [data, ...prev]);
+
+      } catch (error: any) {
+          addNotification(`Erro ao adicionar usuário: ${error.message}`, 'error');
+      }
+  }, [addNotification]);
+
+  const handleUpdateUser = useCallback(async (updatedUser: User) => {
+    try {
+        const updatePayload: any = {
+            nome: updatedUser.nome,
+            email: updatedUser.email,
+            papel: updatedUser.papel
+        };
+        // Only update password if provided (non-empty)
+        // Note: The UI logic passes the existing password if not changed, 
+        // but let's be safe and check if it's the preserved one.
+        if (updatedUser.password) {
+            updatePayload.password = updatedUser.password;
+        }
+
+        const { error } = await supabase
+            .from('users')
+            .update(updatePayload)
+            .eq('id', updatedUser.id);
+
+        if (error) throw error;
+
+        setUsers(prev => prev.map(u => {
+            if (u.id === updatedUser.id) {
+                return updatedUser; // Optimistic update
+            }
+            return u;
+        }));
+    } catch (error: any) {
+        addNotification(`Erro ao atualizar usuário: ${error.message}`, 'error');
+    }
+  }, [addNotification]);
+
+  const handleDeleteUser = useCallback(async (userId: number) => {
     if (currentUser && currentUser.id === userId) {
         return false;
     }
-    setUsers(prev => prev.filter(u => u.id !== userId));
-    return true;
-  }, [currentUser, setUsers]);
+    try {
+        const { error } = await supabase.from('users').delete().eq('id', userId);
+        if (error) throw error;
+        setUsers(prev => prev.filter(u => u.id !== userId));
+        return true;
+    } catch (error: any) {
+        addNotification(`Erro ao excluir usuário: ${error.message}`, 'error');
+        return false;
+    }
+  }, [currentUser, addNotification]);
 
+  // Derived States
   const clientsWithOperationCounts = useMemo(() => {
     return clients.map(client => ({
       ...client,
@@ -236,7 +494,7 @@ const App: React.FC = () => {
 
   const handleDismissReminder = useCallback((reminderId: number) => {
     setDismissedReminderIds(prev => [...prev, reminderId]);
-  }, [setDismissedReminderIds]);
+  }, []);
 
   // Close mobile menu when page changes
   useEffect(() => {
@@ -245,6 +503,14 @@ const App: React.FC = () => {
 
   const renderPage = () => {
     if (!currentUser) return null;
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-500"></div>
+            </div>
+        )
+    }
 
     switch (activePage) {
       case 'Painel de Controle':
