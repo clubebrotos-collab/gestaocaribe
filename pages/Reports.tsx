@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import Card from '../components/Card';
 import { FileText, Download, TrendingUp, Users, TriangleAlert, BarChart, Calendar, PieChart as PieChartIcon, Info, Clock, Wallet } from 'lucide-react';
@@ -156,11 +157,12 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ operations, clients, receipts
             current.count += 1;
             acc[op.type] = current;
             return acc;
-        }, {} as Record<'duplicata' | 'cheque', { value: number; count: number }>);
+        }, {} as Record<'duplicata' | 'cheque' | 'parcelamento', { value: number; count: number }>);
 
         return [
             { label: `Duplicata (${byType.duplicata?.count || 0})`, value: byType.duplicata?.value || 0, color: '#38bdf8' },
             { label: `Cheque (${byType.cheque?.count || 0})`, value: byType.cheque?.value || 0, color: '#34d399' },
+            { label: `Parcela (${byType.parcelamento?.count || 0})`, value: byType.parcelamento?.value || 0, color: '#a855f7' }, // Purple for parcelamento
         ];
     }, [filteredOperations]);
     
@@ -304,7 +306,6 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ operations, clients, receipts
                 
                 <Card title="Desempenho por Tipo de Título" icon={<FileText className="text-brand-400"/>}>
                     <div className="flex justify-center items-center h-full">
-                        {/* FIX: Use the custom PieChart component instead of the lucide-react icon. */}
                         <PieChart data={performanceByType} />
                     </div>
                 </Card>

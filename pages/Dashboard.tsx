@@ -1,6 +1,7 @@
+
 import React, { useMemo } from 'react';
 import Card from '../components/Card';
-import { Banknote, TrendingUp, TriangleAlert, CalendarDays, PieChart as PieChartIcon } from 'lucide-react';
+import { Banknote, TrendingUp, TriangleAlert, CalendarDays, PieChart as PieChartIcon, Layers } from 'lucide-react';
 import type { Operation, OperationStatus } from '../types';
 import { formatCurrency, formatDate } from '../lib/utils';
 import { differenceInDays, parseISO, isToday, isThisWeek, isPast } from 'date-fns';
@@ -12,6 +13,11 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ operations }) => {
 
+    // Main Stats (excluding Parcelamento for clarity, or including? Prompt said "separe dos demais")
+    // Let's filter out parcelamento for the main traditional view, and create a separate section
+    // Or keep total and just add a section. Usually total means everything.
+    // I will include everything in the top cards, but provide breakdown below.
+    
     const stats = useMemo(() => {
         const openOperations = operations.filter(op => op.status === 'aberto');
         const overdueOperations = operations.filter(op => op.status === 'atrasado');
@@ -22,6 +28,14 @@ const Dashboard: React.FC<DashboardProps> = ({ operations }) => {
         const delinquencyValue = overdueOperations.reduce((sum, op) => sum + op.nominalValue, 0);
 
         return { totalCapital, totalReceivables, interestToReceive, delinquencyValue };
+    }, [operations]);
+
+    const parcelamentoStats = useMemo(() => {
+        const parcOps = operations.filter(op => op.type === 'parcelamento');
+        const active = parcOps.filter(op => op.status === 'aberto' || op.status === 'atrasado');
+        const totalActiveValue = active.reduce((sum, op) => sum + op.nominalValue, 0);
+        const countActive = active.length;
+        return { totalActiveValue, countActive, totalCount: parcOps.length };
     }, [operations]);
 
     const dueReminders = useMemo(() => {
@@ -90,7 +104,7 @@ const Dashboard: React.FC<DashboardProps> = ({ operations }) => {
                            <Banknote className="w-6 h-6 text-brand-400" />
                         </div>
                         <div className="ml-4">
-                            <p className="text-sm text-slate-400">Capital Aplicado</p>
+                            <p className="text-sm text-slate-400">Capital Aplicado (Total)</p>
                             <p className="text-2xl font-bold text-slate-100">{formatCurrency(stats.totalCapital)}</p>
                         </div>
                     </div>
@@ -130,6 +144,33 @@ const Dashboard: React.FC<DashboardProps> = ({ operations }) => {
                 </Card>
             </div>
 
+            {/* Seção Específica para Parcelamentos */}
+            {parcelamentoStats.totalCount > 0 && (
+                <div className="bg-slate-800/30 border border-slate-700 rounded-2xl p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 bg-purple-900/30 rounded-lg">
+                             <Layers className="w-5 h-5 text-purple-400" />
+                        </div>
+                        <h2 className="text-lg font-semibold text-slate-100">Controle de Parcelamentos</h2>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                         <div className="bg-slate-900/50 p-4 rounded-lg flex justify-between items-center">
+                            <div>
+                                <p className="text-sm text-slate-400">Saldo de Parcelas a Receber</p>
+                                <p className="text-xl font-bold text-slate-100">{formatCurrency(parcelamentoStats.totalActiveValue)}</p>
+                            </div>
+                            <Layers className="w-8 h-8 text-slate-700" />
+                        </div>
+                        <div className="bg-slate-900/50 p-4 rounded-lg flex justify-between items-center">
+                            <div>
+                                <p className="text-sm text-slate-400">Parcelas em Aberto</p>
+                                <p className="text-xl font-bold text-purple-400">{parcelamentoStats.countActive} <span className="text-sm text-slate-500 font-normal">/ {parcelamentoStats.totalCount}</span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card title="Status da Carteira" icon={<PieChartIcon className="text-brand-400" />}>
                     <div className="flex justify-center items-center h-full p-4">
@@ -143,8 +184,11 @@ const Dashboard: React.FC<DashboardProps> = ({ operations }) => {
                             {dueReminders.map(op => (
                                 <li key={op.id} className="bg-slate-900/50 p-3 rounded-lg flex flex-col sm:flex-row justify-between sm:items-center">
                                     <div>
-                                        <p className="font-semibold text-white">{op.clientName}</p>
-                                        <p className="text-sm text-slate-400 font-mono">{op.type === 'cheque' ? 'Cheque' : 'Duplicata'} - {op.titleNumber} ({formatDate(op.dueDate)})</p>
+                                        <div className="flex items-center gap-2">
+                                            <p className="font-semibold text-white">{op.clientName}</p>
+                                            {op.type === 'parcelamento' && <span className="text-[10px] bg-purple-900/50 text-purple-300 px-1.5 rounded">Parc.</span>}
+                                        </div>
+                                        <p className="text-sm text-slate-400 font-mono capitalize">{op.type} - {op.titleNumber} ({formatDate(op.dueDate)})</p>
                                     </div>
                                     <div className="mt-2 sm:mt-0 flex items-center gap-4">
                                         <span className="font-mono text-slate-300">{formatCurrency(op.nominalValue)}</span>

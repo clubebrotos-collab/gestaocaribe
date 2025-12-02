@@ -1,6 +1,7 @@
 
 export type OperationStatus = 'aberto' | 'pago' | 'atrasado';
 export type FormaPagamento = 'pix' | 'boleto' | 'transferencia';
+export type OperationType = 'duplicata' | 'cheque' | 'parcelamento';
 
 export interface Client {
   id: number;
@@ -24,7 +25,7 @@ export interface Operation {
   id: number;
   clientId: number;
   clientName: string;
-  type: 'duplicata' | 'cheque';
+  type: OperationType;
   titleNumber: string;
   nominalValue: number;
   netValue: number;
@@ -34,7 +35,9 @@ export interface Operation {
   status: OperationStatus;
 }
 
-export type NewOperation = Omit<Operation, 'id' | 'clientName' | 'netValue' | 'status'>;
+export type NewOperation = Omit<Operation, 'id' | 'clientName' | 'netValue' | 'status'> & {
+    installments?: number; // Campo auxiliar para criação de parcelamentos
+};
 
 export interface Recebimento {
   id: number;

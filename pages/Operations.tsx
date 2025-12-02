@@ -3,8 +3,8 @@ import React, { useState, useMemo } from 'react';
 import Card from '../components/Card';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
-import { ArrowRightLeft, CheckCircle2, CreditCard, Trash2, Search, ListFilter, Calendar } from 'lucide-react';
-import type { Operation, NewOperation, Client, OperationStatus } from '../types';
+import { ArrowRightLeft, CheckCircle2, CreditCard, Trash2, Search, ListFilter, Calendar, Layers } from 'lucide-react';
+import type { Operation, NewOperation, Client, OperationStatus, OperationType } from '../types';
 import { formatDate, formatCurrency, formatCurrencyInput, parseCurrencyInput } from '../lib/utils';
 import { useNotification } from '../components/Notification';
 import EmptyState from '../components/EmptyState';
@@ -30,12 +30,13 @@ const OperationForm: React.FC<{
 }> = ({ clients, operations, onSubmit, onCancel, preselectedClientId, setPreselectedClientId }) => {
     // Changed numeric fields to strings to support empty state instead of 0
     const [formData, setFormData] = useState({
-        type: 'duplicata',
+        type: 'duplicata' as OperationType,
         titleNumber: '',
         nominalValue: '',
         issueDate: new Date().toISOString().split('T')[0],
         dueDate: '',
         taxa: '',
+        installments: '1', // Default 1 installment
     });
     const [clientId, setClientId] = useState<string>("");
     const [netValue, setNetValue] = useState(0);
@@ -121,17 +122,16 @@ const OperationForm: React.FC<{
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         
-        // Removed mandatory check for clientId
-        // Removed check for nominalValue > 0
-        
         const nominalVal = parseCurrencyInput(formData.nominalValue);
+        const numInstallments = parseInt(formData.installments) || 1;
 
         onSubmit({ 
             ...formData, 
             clientId: clientId ? parseInt(clientId, 10) : 0, // 0 indicates no client selected
             nominalValue: nominalVal,
             taxa: parseFloat(formData.taxa) || 0,
-            type: formData.type as 'duplicata' | 'cheque'
+            type: formData.type,
+            installments: formData.type === 'parcelamento' ? numInstallments : 1
         });
     };
 
@@ -150,6 +150,7 @@ const OperationForm: React.FC<{
                     <select name="type" value={formData.type} onChange={handleChange} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100">
                         <option value="duplicata">Duplicata</option>
                         <option value="cheque">Cheque</option>
+                        <option value="parcelamento">Parcelamento</option>
                     </select>
                 </div>
                 {creditInfo && (
@@ -169,7 +170,7 @@ const OperationForm: React.FC<{
                     <input name="titleNumber" value={formData.titleNumber} onChange={handleChange} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" />
                 </div>
                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-1">Valor Nominal (R$)</label>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Valor Total (R$)</label>
                     <input 
                         type="text" 
                         inputMode="numeric"
@@ -180,6 +181,27 @@ const OperationForm: React.FC<{
                         className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" 
                     />
                 </div>
+
+                {formData.type === 'parcelamento' && (
+                    <div className="bg-brand-900/20 border border-brand-700/50 p-3 rounded-lg animate-fade-in-up">
+                         <label className="block text-sm font-medium text-brand-300 mb-1">Quantidade de Parcelas</label>
+                         <input 
+                            type="number" 
+                            min="2"
+                            max="60"
+                            name="installments" 
+                            value={formData.installments} 
+                            onChange={handleChange} 
+                            className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" 
+                        />
+                         {parseInt(formData.installments) > 1 && parseCurrencyInput(formData.nominalValue) > 0 && (
+                            <p className="text-xs text-slate-400 mt-2">
+                                Será criado <strong>{formData.installments}x</strong> de <strong>{formatCurrency(parseCurrencyInput(formData.nominalValue) / parseInt(formData.installments))}</strong>
+                            </p>
+                        )}
+                    </div>
+                )}
+
                  {creditWarning && (
                     <div className="md:col-span-2 text-center text-sm text-amber-400 bg-amber-900/50 p-2 rounded-md">
                         {creditWarning}
@@ -190,7 +212,9 @@ const OperationForm: React.FC<{
                     <input type="date" name="issueDate" value={formData.issueDate} onChange={handleChange} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" />
                 </div>
                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-1">Data de Vencimento</label>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">
+                        {formData.type === 'parcelamento' ? 'Vencimento 1ª Parcela' : 'Data de Vencimento'}
+                    </label>
                     <input type="date" name="dueDate" value={formData.dueDate} onChange={handleChange} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" />
                 </div>
                  <div className="md:col-span-2 grid grid-cols-2 gap-4 items-end">
@@ -199,14 +223,16 @@ const OperationForm: React.FC<{
                         <input type="number" step="0.01" name="taxa" value={formData.taxa} onChange={handleChange} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" />
                     </div>
                      <div key={netValueKey} className="bg-slate-900/50 p-3 rounded-lg text-center animate-flash-bg">
-                        <p className="text-sm text-slate-400">Valor Líquido a Pagar</p>
+                        <p className="text-sm text-slate-400">Valor Líquido Total</p>
                         <p className="font-bold text-lg text-emerald-400">{formatCurrency(netValue)}</p>
                     </div>
                 </div>
             </div>
              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-4">
                 <button type="button" onClick={onCancel} className="bg-slate-600 text-white font-semibold px-6 py-2 rounded-md hover:bg-slate-700 w-full sm:w-auto">Cancelar</button>
-                <button type="submit" className="bg-brand-600 text-white font-semibold px-6 py-2 rounded-md hover:bg-brand-700 w-full sm:w-auto">Registrar Operação</button>
+                <button type="submit" className="bg-brand-600 text-white font-semibold px-6 py-2 rounded-md hover:bg-brand-700 w-full sm:w-auto">
+                    {formData.type === 'parcelamento' ? 'Gerar Parcelas' : 'Registrar Operação'}
+                </button>
             </div>
         </form>
     )
@@ -236,7 +262,7 @@ const OperationsPage: React.FC<OperationsPageProps> = ({ operations, clients, on
 
     const handleFormSubmit = (data: NewOperation) => {
         onAddOperation(data);
-        addNotification('Operação registrada com sucesso!', 'success');
+        // Notificação movida para o App.tsx ou tratada aqui se o App.tsx não lançar erro
         setIsFormModalOpen(false);
     };
 
@@ -338,7 +364,10 @@ const OperationsPage: React.FC<OperationsPageProps> = ({ operations, clients, on
                                     <td className="p-4 font-semibold text-slate-100">{op.clientName}</td>
                                     <td className="p-4">
                                         <div className="font-mono text-sm">{op.titleNumber}</div>
-                                        <div className="text-xs text-slate-400 capitalize">{op.type}</div>
+                                        <div className="flex items-center gap-1 text-xs text-slate-400 capitalize">
+                                            {op.type === 'parcelamento' && <Layers className="w-3 h-3" />}
+                                            {op.type}
+                                        </div>
                                     </td>
                                     <td className="p-4">{formatDate(op.dueDate)}</td>
                                     <td className="p-4 text-right font-mono">{formatCurrency(op.nominalValue)}</td>
@@ -396,7 +425,10 @@ const OperationsPage: React.FC<OperationsPageProps> = ({ operations, clients, on
                             <div className="flex justify-between items-start">
                                 <div>
                                     <h3 className="font-semibold text-slate-100">{op.clientName}</h3>
-                                    <p className="text-sm text-slate-400 font-mono capitalize">{op.type} • {op.titleNumber}</p>
+                                    <p className="text-sm text-slate-400 font-mono capitalize flex items-center gap-1">
+                                         {op.type === 'parcelamento' && <Layers className="w-3 h-3" />}
+                                         {op.type} • {op.titleNumber}
+                                    </p>
                                 </div>
                                 <select
                                     value={op.status}

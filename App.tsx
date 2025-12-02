@@ -11,7 +11,7 @@ import LoginPage from './pages/Login';
 import UsersPage from './pages/UsersPage';
 import InterestCalculatorPage from './pages/InterestCalculatorPage';
 import type { Client, Operation, NewClient, NewOperation, Recebimento, NewRecebimento, User, OperationStatus, Reminder, NewUser } from './types';
-import { isPast, isToday, parseISO, differenceInDays } from 'date-fns';
+import { isPast, isToday, parseISO, differenceInDays, addMonths } from 'date-fns';
 import { supabase } from './lib/supabase';
 import { useNotification } from './components/Notification';
 
@@ -247,61 +247,128 @@ const App: React.FC = () => {
 
   const handleAddOperation = useCallback(async (opData: NewOperation) => {
     const client = clients.find(c => c.id === opData.clientId);
-    // Removed strict check if (!client) return; to allow orphan operations if DB supports it (e.g. opData.clientId === 0)
-
     const taxaDecimal = opData.taxa / 100;
-    // Lógica ajustada: Valor Líquido = Nominal + (Nominal * Taxa)
-    // Antes subtraia, agora soma (modelo empréstimo/juros simples)
-    const interestAmount = opData.nominalValue * taxaDecimal;
-    const netValue = opData.nominalValue + interestAmount;
     
-    try {
-        const payload: any = {
-            type: opData.type,
-            title_number: opData.titleNumber,
-            nominal_value: opData.nominalValue,
-            net_value: netValue,
-            issue_date: opData.issueDate,
-            due_date: opData.dueDate,
-            taxa: opData.taxa,
-            status: 'aberto'
-        };
+    // Check if it's a "Parcelamento" with multiple installments
+    if (opData.type === 'parcelamento' && opData.installments && opData.installments > 1) {
+        const totalNominal = opData.nominalValue;
+        const count = opData.installments;
+        const baseTitle = opData.titleNumber;
+        const nominalPerInstallment = parseFloat((totalNominal / count).toFixed(2));
+        
+        // Calculate remaining cents for the last installment
+        const totalCalculated = nominalPerInstallment * count;
+        const diff = parseFloat((totalNominal - totalCalculated).toFixed(2));
 
-        // If clientId is valid (greater than 0), include it. Supabase will handle NULL if excluded (if SQL allows).
-        // Since our SQL allows NULL client_id (based on README update plan), we can just pass null if clientId is 0.
-        if (opData.clientId && opData.clientId > 0) {
-            payload.client_id = opData.clientId;
-        } else {
-             payload.client_id = null;
+        const bulkOperations = [];
+
+        try {
+            for (let i = 0; i < count; i++) {
+                // Adjust value for last installment if there's rounding difference
+                let value = nominalPerInstallment;
+                if (i === count - 1) {
+                    value += diff;
+                }
+                
+                const interestAmount = value * taxaDecimal;
+                const netValue = value + interestAmount;
+                const dueDate = addMonths(parseISO(opData.dueDate), i).toISOString().split('T')[0];
+
+                const payload = {
+                    type: 'parcelamento',
+                    title_number: `${baseTitle}-${i + 1}/${count}`,
+                    nominal_value: value,
+                    net_value: netValue,
+                    issue_date: opData.issueDate,
+                    due_date: dueDate,
+                    taxa: opData.taxa,
+                    status: 'aberto',
+                    client_id: (opData.clientId && opData.clientId > 0) ? opData.clientId : null
+                };
+                bulkOperations.push(payload);
+            }
+
+            const { data, error } = await supabase
+                .from('operations')
+                .insert(bulkOperations)
+                .select();
+
+            if (error) throw error;
+
+            // Map back to local state
+            const newOps: Operation[] = (data || []).map((d: any) => ({
+                id: d.id,
+                clientId: d.client_id || 0,
+                clientName: client ? client.nome : 'Cliente Desconhecido',
+                type: d.type,
+                titleNumber: d.title_number,
+                nominalValue: d.nominal_value,
+                netValue: d.net_value,
+                issueDate: d.issue_date,
+                dueDate: d.due_date,
+                taxa: d.taxa,
+                status: d.status,
+            }));
+
+            setOperations(prev => [...newOps.sort((a,b) => b.id - a.id), ...prev]);
+            addNotification(`Parcelamento em ${count}x registrado com sucesso!`, 'success');
+
+        } catch (error: any) {
+            console.error("Error adding bulk operations:", error);
+            addNotification(`Erro ao registrar parcelamento: ${error.message}`, 'error');
         }
 
-        const { data, error } = await supabase
-            .from('operations')
-            .insert([payload])
-            .select()
-            .single();
+    } else {
+        // Standard Single Operation (Cheque/Duplicata/Single Parcelamento)
+        const interestAmount = opData.nominalValue * taxaDecimal;
+        const netValue = opData.nominalValue + interestAmount;
+        
+        try {
+            const payload: any = {
+                type: opData.type,
+                title_number: opData.titleNumber,
+                nominal_value: opData.nominalValue,
+                net_value: netValue,
+                issue_date: opData.issueDate,
+                due_date: opData.dueDate,
+                taxa: opData.taxa,
+                status: 'aberto'
+            };
 
-        if (error) throw error;
+            if (opData.clientId && opData.clientId > 0) {
+                payload.client_id = opData.clientId;
+            } else {
+                 payload.client_id = null;
+            }
 
-        // Map back to CamelCase for local state
-        const newOperation: Operation = {
-            id: data.id,
-            clientId: data.client_id || 0,
-            clientName: client ? client.nome : 'Cliente Desconhecido', 
-            type: data.type,
-            titleNumber: data.title_number,
-            nominalValue: data.nominal_value,
-            netValue: data.net_value,
-            issueDate: data.issue_date,
-            dueDate: data.due_date,
-            taxa: data.taxa,
-            status: data.status,
-        };
+            const { data, error } = await supabase
+                .from('operations')
+                .insert([payload])
+                .select()
+                .single();
 
-        setOperations(prev => [newOperation, ...prev]);
-    } catch (error: any) {
-        console.error("Error adding operation:", error);
-        addNotification(`Erro ao registrar operação: ${error.message}`, 'error');
+            if (error) throw error;
+
+            const newOperation: Operation = {
+                id: data.id,
+                clientId: data.client_id || 0,
+                clientName: client ? client.nome : 'Cliente Desconhecido', 
+                type: data.type,
+                titleNumber: data.title_number,
+                nominalValue: data.nominal_value,
+                netValue: data.net_value,
+                issueDate: data.issue_date,
+                dueDate: data.due_date,
+                taxa: data.taxa,
+                status: data.status,
+            };
+
+            setOperations(prev => [newOperation, ...prev]);
+            addNotification('Operação registrada com sucesso!', 'success');
+        } catch (error: any) {
+            console.error("Error adding operation:", error);
+            addNotification(`Erro ao registrar operação: ${error.message}`, 'error');
+        }
     }
   }, [clients, addNotification]);
   
