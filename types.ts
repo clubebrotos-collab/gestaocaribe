@@ -44,6 +44,7 @@ export interface Recebimento {
   valor_principal_pago: number;
   valor_juros_pago: number;
   forma_pagamento: FormaPagamento;
+  observacoes?: string;
 }
 
 export type NewRecebimento = Omit<Recebimento, 'id'>;

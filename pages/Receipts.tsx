@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import Card from '../components/Card';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
-import { CreditCard, Trash2, Calendar, Banknote } from 'lucide-react';
+import { CreditCard, Trash2, Calendar, Banknote, StickyNote } from 'lucide-react';
 import type { Recebimento, NewRecebimento, Operation, FormaPagamento } from '../types';
 import { formatDate, formatCurrency } from '../lib/utils';
 import { useNotification } from '../components/Notification';
@@ -23,10 +23,12 @@ const ReceiptForm: React.FC<{
     onCancel: () => void;
 }> = ({ operations, receipts, onSubmit, onCancel }) => {
     const [operationId, setOperationId] = useState<string>('');
-    const [totalRecebido, setTotalRecebido] = useState<number>(0);
-    const [principalPago, setPrincipalPago] = useState<number>(0);
-    const [jurosPago, setJurosPago] = useState<number>(0);
+    // Changed to strings to allow empty inputs
+    const [totalRecebido, setTotalRecebido] = useState<string>('');
+    const [principalPago, setPrincipalPago] = useState<string>('');
+    const [jurosPago, setJurosPago] = useState<string>('');
     const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>('pix');
+    const [observacoes, setObservacoes] = useState('');
     const [dataRecebimento, setDataRecebimento] = useState(new Date().toISOString().split('T')[0]);
     const [summaryKey, setSummaryKey] = useState(0);
     const [isInterestOnly, setIsInterestOnly] = useState(false);
@@ -53,84 +55,86 @@ const ReceiptForm: React.FC<{
     React.useEffect(() => {
         if (selectedOperation) {
             setSummaryKey(k => k + 1);
-            // Set default values to the full outstanding amount
-            const total = parseFloat(outstandingBalance.total.toFixed(2));
-            setTotalRecebido(total);
-            setPrincipalPago(parseFloat(outstandingBalance.principal.toFixed(2)));
-            setJurosPago(parseFloat(outstandingBalance.juros.toFixed(2)));
-            setIsInterestOnly(false); // Reset check on op change
+            setTotalRecebido(outstandingBalance.total > 0 ? outstandingBalance.total.toString() : '');
+            setPrincipalPago(outstandingBalance.principal > 0 ? parseFloat(outstandingBalance.principal.toFixed(2)).toString() : '');
+            setJurosPago(outstandingBalance.juros > 0 ? parseFloat(outstandingBalance.juros.toFixed(2)).toString() : '');
+            
+            setIsInterestOnly(false); 
         } else {
-            // Reset form when no operation is selected
-            setTotalRecebido(0);
-            setPrincipalPago(0);
-            setJurosPago(0);
+            setTotalRecebido('');
+            setPrincipalPago('');
+            setJurosPago('');
         }
     }, [selectedOperation, outstandingBalance]);
     
     // Watch for checkbox change
     React.useEffect(() => {
         if (isInterestOnly) {
-            setPrincipalPago(0);
+            setPrincipalPago('');
             setJurosPago(totalRecebido);
         } else if (selectedOperation) {
              // Recalculate default split if unchecked
-             // Logic mirrors handleTotalChange
+            const numTotal = parseFloat(totalRecebido) || 0;
             if (outstandingBalance.total > 0) {
-                const cappedValue = Math.min(totalRecebido, outstandingBalance.total);
+                const cappedValue = Math.min(numTotal, outstandingBalance.total);
                 const jurosRatio = outstandingBalance.juros / outstandingBalance.total;
                 const allocatedJuros = parseFloat((cappedValue * jurosRatio).toFixed(2));
                 const allocatedPrincipal = parseFloat((cappedValue - allocatedJuros).toFixed(2));
-                setJurosPago(allocatedJuros);
-                setPrincipalPago(allocatedPrincipal);
+                
+                setJurosPago(allocatedJuros > 0 ? allocatedJuros.toString() : '');
+                setPrincipalPago(allocatedPrincipal > 0 ? allocatedPrincipal.toString() : '');
             }
         }
     }, [isInterestOnly, totalRecebido, outstandingBalance, selectedOperation]);
 
-    const handleTotalChange = (value: number) => {
-        // If Interest Only is checked, we don't cap against total balance necessarily, 
-        // as users might pay extra interest (fees). 
-        // But for consistency let's stick to the flow, maybe capping is still good UI but 
-        // usually interest only means paying the 'cost' without reducing principal.
-        
-        // For standard flow:
-        const cappedValue = isInterestOnly ? value : Math.min(value, outstandingBalance.total);
-        setTotalRecebido(cappedValue);
+    const handleTotalChange = (value: string) => {
+        setTotalRecebido(value);
+        const numValue = parseFloat(value) || 0;
 
+        const cappedValue = isInterestOnly ? numValue : Math.min(numValue, outstandingBalance.total);
+        
         if (isInterestOnly) {
-            setPrincipalPago(0);
-            setJurosPago(cappedValue);
+            setPrincipalPago('');
+            setJurosPago(value); // If Interest Only, Juros follows Total input
         } else {
             if (outstandingBalance.total > 0) {
                 const jurosRatio = outstandingBalance.juros / outstandingBalance.total;
                 const allocatedJuros = parseFloat((cappedValue * jurosRatio).toFixed(2));
-                // The rest is principal to avoid rounding errors
                 const allocatedPrincipal = parseFloat((cappedValue - allocatedJuros).toFixed(2));
-                setJurosPago(allocatedJuros);
-                setPrincipalPago(allocatedPrincipal);
+                
+                setJurosPago(allocatedJuros > 0 ? allocatedJuros.toString() : '');
+                setPrincipalPago(allocatedPrincipal > 0 ? allocatedPrincipal.toString() : '');
             } else {
-                setJurosPago(0);
-                setPrincipalPago(0);
+                setJurosPago('');
+                setPrincipalPago('');
             }
         }
     };
     
-    const handlePrincipalChange = (value: number) => {
-        if (isInterestOnly) return; // Locked
-        const cappedValue = Math.min(value, outstandingBalance.principal);
-        setPrincipalPago(cappedValue);
-        setTotalRecebido(parseFloat((cappedValue + jurosPago).toFixed(2)));
+    const handlePrincipalChange = (value: string) => {
+        if (isInterestOnly) return;
+        const numValue = parseFloat(value) || 0;
+        const cappedValue = Math.min(numValue, outstandingBalance.principal);
+        
+        setPrincipalPago(value);
+        
+        // Recalculate Total based on new Principal + existing Juros
+        const numJuros = parseFloat(jurosPago) || 0;
+        const newTotal = parseFloat((cappedValue + numJuros).toFixed(2));
+        setTotalRecebido(newTotal > 0 ? newTotal.toString() : '');
     }
 
-    const handleJurosChange = (value: number) => {
-        // We allow editing Juros manually. 
-        // If InterestOnly is checked, Juros = Total, so changing Juros changes Total.
+    const handleJurosChange = (value: string) => {
+        setJurosPago(value);
+        const numValue = parseFloat(value) || 0;
+
         if (isInterestOnly) {
-            setJurosPago(value);
             setTotalRecebido(value);
         } else {
-            const cappedValue = Math.min(value, outstandingBalance.juros);
-            setJurosPago(cappedValue);
-            setTotalRecebido(parseFloat((principalPago + cappedValue).toFixed(2)));
+            const cappedValue = Math.min(numValue, outstandingBalance.juros);
+            const numPrincipal = parseFloat(principalPago) || 0;
+            const newTotal = parseFloat((numPrincipal + cappedValue).toFixed(2));
+            setTotalRecebido(newTotal > 0 ? newTotal.toString() : '');
         }
     }
 
@@ -141,17 +145,20 @@ const ReceiptForm: React.FC<{
             addNotification('Por favor, selecione uma operação.', 'error');
             return;
         }
-        if (totalRecebido <= 0) {
+        const numTotal = parseFloat(totalRecebido) || 0;
+        
+        if (numTotal <= 0) {
             addNotification('O valor recebido deve ser maior que zero.', 'error');
             return;
         }
         onSubmit({
             operationId: parseInt(operationId),
             data_recebimento: dataRecebimento,
-            valor_total_recebido: totalRecebido,
-            valor_principal_pago: principalPago,
-            valor_juros_pago: jurosPago,
-            forma_pagamento: formaPagamento
+            valor_total_recebido: numTotal,
+            valor_principal_pago: parseFloat(principalPago) || 0,
+            valor_juros_pago: parseFloat(jurosPago) || 0,
+            forma_pagamento: formaPagamento,
+            observacoes: observacoes
         });
     };
 
@@ -190,7 +197,7 @@ const ReceiptForm: React.FC<{
 
                 <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Valor Total Recebido (R$)</label>
-                    <input type="number" step="0.01" value={totalRecebido} onChange={e => handleTotalChange(parseFloat(e.target.value) || 0)} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" />
+                    <input type="number" step="0.01" value={totalRecebido} onChange={e => handleTotalChange(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" />
                 </div>
                  <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Forma de Pagamento</label>
@@ -224,14 +231,14 @@ const ReceiptForm: React.FC<{
                                 type="number" 
                                 step="0.01" 
                                 value={principalPago} 
-                                onChange={e => handlePrincipalChange(parseFloat(e.target.value) || 0)} 
+                                onChange={e => handlePrincipalChange(e.target.value)} 
                                 disabled={isInterestOnly}
                                 className={`w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100 ${isInterestOnly ? 'opacity-50 cursor-not-allowed' : ''}`} 
                             />
                         </div>
                          <div>
                             <label className="block text-xs font-medium text-slate-400 mb-1">Juros Pagos (R$)</label>
-                            <input type="number" step="0.01" value={jurosPago} onChange={e => handleJurosChange(parseFloat(e.target.value) || 0)} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" />
+                            <input type="number" step="0.01" value={jurosPago} onChange={e => handleJurosChange(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" />
                         </div>
                     </div>
                 </div>
@@ -239,6 +246,17 @@ const ReceiptForm: React.FC<{
                  <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Data de Recebimento</label>
                     <input type="date" value={dataRecebimento} onChange={e => setDataRecebimento(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" />
+                </div>
+
+                <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Observações</label>
+                    <textarea 
+                        value={observacoes} 
+                        onChange={e => setObservacoes(e.target.value)} 
+                        rows={2}
+                        placeholder="Ex: Pagamento referente a juros de prorrogação..."
+                        className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100 resize-none" 
+                    />
                 </div>
             </div>
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-4">
@@ -304,7 +322,7 @@ const ReceiptsPage: React.FC<ReceiptsPageProps> = ({ receipts, operations, onAdd
                                 <th className="p-4 text-right">Principal Pago</th>
                                 <th className="p-4 text-right">Juros Pago</th>
                                 <th className="p-4 text-right">Total Recebido</th>
-                                <th className="p-4">Forma Pagto.</th>
+                                <th className="p-4">Obs</th>
                                 <th className="p-4 text-right">Ações</th>
                             </tr>
                         </thead>
@@ -317,11 +335,16 @@ const ReceiptsPage: React.FC<ReceiptsPageProps> = ({ receipts, operations, onAdd
                                             <div className="font-semibold text-slate-100">{opInfo?.titleNumber}</div>
                                             <div className="text-xs text-slate-400">{opInfo?.clientName}</div>
                                         </td>
-                                        <td className="p-4">{formatDate(receipt.data_recebimento)}</td>
+                                        <td className="p-4">
+                                            <div>{formatDate(receipt.data_recebimento)}</div>
+                                            <div className="text-xs text-slate-400 capitalize">{receipt.forma_pagamento}</div>
+                                        </td>
                                         <td className="p-4 text-right font-mono">{formatCurrency(receipt.valor_principal_pago)}</td>
                                         <td className="p-4 text-right font-mono">{formatCurrency(receipt.valor_juros_pago)}</td>
                                         <td className="p-4 text-right font-mono text-emerald-400">{formatCurrency(receipt.valor_total_recebido)}</td>
-                                        <td className="p-4 capitalize">{receipt.forma_pagamento}</td>
+                                        <td className="p-4 max-w-[200px] truncate text-slate-400 text-sm" title={receipt.observacoes}>
+                                            {receipt.observacoes || '-'}
+                                        </td>
                                         <td className="p-4 text-right">
                                             <button onClick={() => openConfirmDeleteModal(receipt.id)} className="p-2 text-slate-400 hover:text-red-400 transition-all duration-200 hover:scale-110" aria-label="Excluir Recebimento">
                                                 <Trash2 className="w-5 h-5"/>
@@ -378,6 +401,12 @@ const ReceiptsPage: React.FC<ReceiptsPageProps> = ({ receipts, operations, onAdd
                                         <span>Juros: {formatCurrency(receipt.valor_juros_pago)}</span>
                                     </div>
                                 </div>
+                                {receipt.observacoes && (
+                                    <div className="flex items-start gap-2 text-xs text-slate-400 bg-slate-800/80 p-2 rounded">
+                                        <StickyNote className="w-3 h-3 mt-0.5 shrink-0"/>
+                                        <p>{receipt.observacoes}</p>
+                                    </div>
+                                )}
                             </div>
                         )
                     }) : (

@@ -28,8 +28,9 @@ const ClientForm: React.FC<{ client?: Client | null; onSubmit: (data: NewClient 
         email: client?.email || '',
         telefone: client?.telefone || '',
         endereco: client?.endereco || '',
-        limite_credito: client?.limite_credito !== undefined ? client.limite_credito.toString() : '',
-        taxa_juros_mensal: client?.taxa_juros_mensal !== undefined ? client.taxa_juros_mensal.toString() : '',
+        // If undefined OR 0, default to empty string
+        limite_credito: (client?.limite_credito !== undefined && client.limite_credito !== 0) ? client.limite_credito.toString() : '',
+        taxa_juros_mensal: (client?.taxa_juros_mensal !== undefined && client.taxa_juros_mensal !== 0) ? client.taxa_juros_mensal.toString() : '',
     });
     const [errors, setErrors] = useState<Partial<Record<keyof typeof formData, string>>>({});
 

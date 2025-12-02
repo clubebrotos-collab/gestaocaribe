@@ -133,11 +133,13 @@ const App: React.FC = () => {
         const operation = prevOps.find(op => op.id === receiptData.operationId);
         if (!operation) return prevOps;
         
-        const totalPaidForOperation = receipts
+        // Logic Update: Only close operation if PRINCIPAL PAID >= NOMINAL VALUE
+        // Pure interest payments should keep operation open.
+        const totalPrincipalPaid = receipts
             .filter(r => r.operationId === receiptData.operationId)
-            .reduce((sum, r) => sum + r.valor_total_recebido, 0) + receiptData.valor_total_recebido;
+            .reduce((sum, r) => sum + r.valor_principal_pago, 0) + receiptData.valor_principal_pago;
 
-        if (totalPaidForOperation >= operation.nominalValue) {
+        if (totalPrincipalPaid >= operation.nominalValue) {
              return prevOps.map(op => op.id === receiptData.operationId ? { ...op, status: 'pago' } : op);
         }
         return prevOps;
@@ -155,9 +157,10 @@ const App: React.FC = () => {
     if (!operation || operation.status !== 'pago') return;
 
     const remainingReceiptsForOp = receipts.filter(r => r.operationId === receiptToDelete.operationId && r.id !== receiptId);
-    const totalPaid = remainingReceiptsForOp.reduce((sum, r) => sum + r.valor_total_recebido, 0);
+    // Check using Principal for reopening logic as well
+    const totalPrincipalPaid = remainingReceiptsForOp.reduce((sum, r) => sum + r.valor_principal_pago, 0);
 
-    if (totalPaid < operation.nominalValue) {
+    if (totalPrincipalPaid < operation.nominalValue) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const dueDate = parseISO(operation.dueDate);

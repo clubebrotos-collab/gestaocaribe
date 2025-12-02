@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import Card from '../components/Card';
 import { Calculator, RefreshCw, TrendingUp, ChevronsRight } from 'lucide-react';
@@ -14,8 +15,9 @@ const InterestCalculatorPage: React.FC<InterestCalculatorPageProps> = ({ clients
     const [selectedClientId, setSelectedClientId] = useState('');
     const [selectedOperationId, setSelectedOperationId] = useState('');
     
-    const [capital, setCapital] = useState(10000);
-    const [taxa, setTaxa] = useState(3);
+    // Changed to strings to allow empty inputs
+    const [capital, setCapital] = useState<string>('10000');
+    const [taxa, setTaxa] = useState<string>('3');
     const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
     const [endDate, setEndDate] = useState(() => {
         const date = new Date();
@@ -36,8 +38,8 @@ const InterestCalculatorPage: React.FC<InterestCalculatorPageProps> = ({ clients
             const operation = operations.find(op => op.id === parseInt(selectedOperationId));
             if (operation) {
                 setIsManualMode(false);
-                setCapital(operation.netValue);
-                setTaxa(operation.taxa);
+                setCapital(operation.netValue.toString());
+                setTaxa(operation.taxa.toString());
                 setStartDate(operation.issueDate);
                 setEndDate(operation.dueDate);
             }
@@ -46,7 +48,7 @@ const InterestCalculatorPage: React.FC<InterestCalculatorPageProps> = ({ clients
             if (selectedClientId) {
                 const client = clients.find(c => c.id === parseInt(selectedClientId));
                 if (client) {
-                    setTaxa(client.taxa_juros_mensal || 0);
+                    setTaxa(client.taxa_juros_mensal ? client.taxa_juros_mensal.toString() : '');
                 }
             }
         }
@@ -56,18 +58,19 @@ const InterestCalculatorPage: React.FC<InterestCalculatorPageProps> = ({ clients
         setSelectedOperationId(''); // Reset operation when client changes
         if(selectedClientId) {
             const client = clients.find(c => c.id === parseInt(selectedClientId));
-            if(client) setTaxa(client.taxa_juros_mensal);
+            if(client) setTaxa(client.taxa_juros_mensal ? client.taxa_juros_mensal.toString() : '');
         }
     }, [selectedClientId, clients]);
 
 
     const resultado = useMemo(() => {
-        const C = capital;
-        const taxaMensal = taxa / 100;
+        const C = parseFloat(capital) || 0;
+        const taxaVal = parseFloat(taxa) || 0;
+        const taxaMensal = taxaVal / 100;
         const taxaDiaria = taxaMensal / 30; // Approximation for daily rate
         const dias = differenceInDays(parseISO(endDate), parseISO(startDate));
 
-        if (C <= 0 || taxa < 0 || dias < 0) {
+        if (C <= 0 || taxaVal < 0 || dias < 0) {
             return { dias: dias > 0 ? dias : 0, jurosSimples: 0, montanteSimples: C > 0 ? C : 0, jurosCompostos: 0, montanteComposto: C > 0 ? C : 0 };
         }
         
@@ -91,8 +94,8 @@ const InterestCalculatorPage: React.FC<InterestCalculatorPageProps> = ({ clients
         setIsManualMode(true);
         setSelectedClientId('');
         setSelectedOperationId('');
-        setCapital(10000);
-        setTaxa(3);
+        setCapital('10000');
+        setTaxa('3');
         const today = new Date();
         const nextMonth = new Date();
         nextMonth.setDate(today.getDate() + 30);
@@ -146,11 +149,11 @@ const InterestCalculatorPage: React.FC<InterestCalculatorPageProps> = ({ clients
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-300 mb-1">Valor do Capital (R$)</label>
-                                    <input type="number" value={capital} onChange={e => setCapital(parseFloat(e.target.value) || 0)} disabled={!isManualMode} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100 disabled:bg-slate-800 disabled:text-slate-400" />
+                                    <input type="number" value={capital} onChange={e => setCapital(e.target.value)} disabled={!isManualMode} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100 disabled:bg-slate-800 disabled:text-slate-400" />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-300 mb-1">Taxa de Juros (% ao mês)</label>
-                                    <input type="number" value={taxa} onChange={e => setTaxa(parseFloat(e.target.value) || 0)} disabled={!isManualMode} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100 disabled:bg-slate-800 disabled:text-slate-400" />
+                                    <input type="number" value={taxa} onChange={e => setTaxa(e.target.value)} disabled={!isManualMode} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100 disabled:bg-slate-800 disabled:text-slate-400" />
                                 </div>
                             </div>
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -173,9 +176,9 @@ const InterestCalculatorPage: React.FC<InterestCalculatorPageProps> = ({ clients
                             <div className="bg-slate-900/50 p-3 rounded-lg text-center">
                                 <p className="text-sm text-slate-400">Resumo dos Parâmetros</p>
                                 <div className="flex justify-around items-center mt-1 text-xs">
-                                    <span>{formatCurrency(capital)}</span>
+                                    <span>{formatCurrency(parseFloat(capital) || 0)}</span>
                                     <ChevronsRight className="w-4 h-4 text-slate-600"/>
-                                    <span>{taxa.toFixed(2)}% a.m.</span>
+                                    <span>{(parseFloat(taxa) || 0).toFixed(2)}% a.m.</span>
                                     <ChevronsRight className="w-4 h-4 text-slate-600"/>
                                     <span className="font-bold">{resultado.dias} dias</span>
                                 </div>

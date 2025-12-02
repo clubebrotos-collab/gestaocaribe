@@ -28,13 +28,14 @@ const OperationForm: React.FC<{
     preselectedClientId: number | null;
     setPreselectedClientId: (id: number | null) => void;
 }> = ({ clients, operations, onSubmit, onCancel, preselectedClientId, setPreselectedClientId }) => {
-    const [formData, setFormData] = useState<Omit<NewOperation, 'clientId'>>({
+    // Changed numeric fields to strings to support empty state instead of 0
+    const [formData, setFormData] = useState({
         type: 'duplicata',
         titleNumber: '',
-        nominalValue: 0,
+        nominalValue: '',
         issueDate: new Date().toISOString().split('T')[0],
         dueDate: '',
-        taxa: 0,
+        taxa: '',
     });
     const [clientId, setClientId] = useState<string>("");
     const [netValue, setNetValue] = useState(0);
@@ -53,7 +54,9 @@ const OperationForm: React.FC<{
     }, [preselectedClientId, setPreselectedClientId]);
 
     React.useEffect(() => {
-        const { nominalValue, taxa } = formData;
+        const nominalValue = parseFloat(formData.nominalValue) || 0;
+        const taxa = parseFloat(formData.taxa) || 0;
+
         if (nominalValue > 0 && taxa > 0) {
             const taxaDecimal = taxa / 100;
             // Cálculo ajustado: Valor Líquido = Nominal + (Nominal * Taxa)
@@ -77,16 +80,21 @@ const OperationForm: React.FC<{
                     .reduce((sum, op) => sum + op.nominalValue, 0);
                 const remaining = client.limite_credito - currentExposure;
                 setCreditInfo({ limit: client.limite_credito, remaining });
-                setFormData(prev => ({ ...prev, taxa: client.taxa_juros_mensal }));
+                // Only set taxa if it exists and convert to string, otherwise empty string
+                setFormData(prev => ({ 
+                    ...prev, 
+                    taxa: client.taxa_juros_mensal ? client.taxa_juros_mensal.toString() : '' 
+                }));
             }
         } else {
             setCreditInfo(null);
-            setFormData(prev => ({...prev, taxa: 0}));
+            setFormData(prev => ({...prev, taxa: ''}));
         }
     }, [clientId, clients, operations]);
 
     React.useEffect(() => {
-        if (creditInfo && formData.nominalValue > 0 && formData.nominalValue > creditInfo.remaining) {
+        const nominalVal = parseFloat(formData.nominalValue) || 0;
+        if (creditInfo && nominalVal > 0 && nominalVal > creditInfo.remaining) {
             setCreditWarning(`Atenção: O valor desta operação excede o limite de crédito restante de ${formatCurrency(creditInfo.remaining)}.`);
         } else {
             setCreditWarning('');
@@ -101,7 +109,8 @@ const OperationForm: React.FC<{
         } else {
             setFormData(prev => ({ 
                 ...prev, 
-                [name]: name === 'nominalValue' || name === 'taxa' ? parseFloat(value) : value 
+                // Don't parse float here, keep as string to allow empty input
+                [name]: value 
             }));
         }
     };
@@ -112,7 +121,20 @@ const OperationForm: React.FC<{
             addNotification("Por favor, selecione um cliente.", "error");
             return;
         }
-        onSubmit({ ...formData, clientId: parseInt(clientId, 10) });
+        
+        const nominalVal = parseFloat(formData.nominalValue);
+        if (isNaN(nominalVal) || nominalVal <= 0) {
+             addNotification("O valor nominal deve ser maior que zero.", "error");
+             return;
+        }
+
+        onSubmit({ 
+            ...formData, 
+            clientId: parseInt(clientId, 10),
+            nominalValue: nominalVal,
+            taxa: parseFloat(formData.taxa) || 0,
+            type: formData.type as 'duplicata' | 'cheque'
+        });
     };
 
     return (
@@ -150,7 +172,7 @@ const OperationForm: React.FC<{
                 </div>
                  <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Valor Nominal (R$)</label>
-                    <input type="number" step="0.01" name="nominalValue" value={formData.nominalValue} onChange={handleChange} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" />
+                    <input type="number" step="0.01" name="nominalValue" value={formData.nominalValue} onChange={handleChange} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" required />
                 </div>
                  {creditWarning && (
                     <div className="md:col-span-2 text-center text-sm text-amber-400 bg-amber-900/50 p-2 rounded-md">
