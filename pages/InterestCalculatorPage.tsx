@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import Card from '../components/Card';
 import { Calculator, RefreshCw, TrendingUp, ChevronsRight } from 'lucide-react';
 import type { Client, Operation } from '../types';
-import { formatCurrency, formatDate } from '../lib/utils';
+import { formatCurrency, formatDate, formatCurrencyInput, parseCurrencyInput } from '../lib/utils';
 import { differenceInDays, parseISO } from 'date-fns';
 
 interface InterestCalculatorPageProps {
@@ -15,8 +15,8 @@ const InterestCalculatorPage: React.FC<InterestCalculatorPageProps> = ({ clients
     const [selectedClientId, setSelectedClientId] = useState('');
     const [selectedOperationId, setSelectedOperationId] = useState('');
     
-    // Changed to strings to allow empty inputs
-    const [capital, setCapital] = useState<string>('10000');
+    // Changed to strings to allow empty inputs. Default value formatted.
+    const [capital, setCapital] = useState<string>('R$ 10.000,00');
     const [taxa, setTaxa] = useState<string>('3');
     const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
     const [endDate, setEndDate] = useState(() => {
@@ -38,7 +38,7 @@ const InterestCalculatorPage: React.FC<InterestCalculatorPageProps> = ({ clients
             const operation = operations.find(op => op.id === parseInt(selectedOperationId));
             if (operation) {
                 setIsManualMode(false);
-                setCapital(operation.netValue.toString());
+                setCapital(formatCurrencyInput((operation.netValue * 100).toFixed(0)));
                 setTaxa(operation.taxa.toString());
                 setStartDate(operation.issueDate);
                 setEndDate(operation.dueDate);
@@ -64,7 +64,7 @@ const InterestCalculatorPage: React.FC<InterestCalculatorPageProps> = ({ clients
 
 
     const resultado = useMemo(() => {
-        const C = parseFloat(capital) || 0;
+        const C = parseCurrencyInput(capital);
         const taxaVal = parseFloat(taxa) || 0;
         const taxaMensal = taxaVal / 100;
         const taxaDiaria = taxaMensal / 30; // Approximation for daily rate
@@ -94,7 +94,7 @@ const InterestCalculatorPage: React.FC<InterestCalculatorPageProps> = ({ clients
         setIsManualMode(true);
         setSelectedClientId('');
         setSelectedOperationId('');
-        setCapital('10000');
+        setCapital('R$ 10.000,00');
         setTaxa('3');
         const today = new Date();
         const nextMonth = new Date();
@@ -103,6 +103,10 @@ const InterestCalculatorPage: React.FC<InterestCalculatorPageProps> = ({ clients
         setEndDate(nextMonth.toISOString().split('T')[0]);
     };
     
+    const handleCapitalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setCapital(formatCurrencyInput(e.target.value));
+    };
+
     return (
         <div className="space-y-8">
             <header>
@@ -149,7 +153,15 @@ const InterestCalculatorPage: React.FC<InterestCalculatorPageProps> = ({ clients
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-300 mb-1">Valor do Capital (R$)</label>
-                                    <input type="number" value={capital} onChange={e => setCapital(e.target.value)} disabled={!isManualMode} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100 disabled:bg-slate-800 disabled:text-slate-400" />
+                                    <input 
+                                        type="text" 
+                                        inputMode="numeric"
+                                        value={capital} 
+                                        onChange={handleCapitalChange} 
+                                        disabled={!isManualMode} 
+                                        data-mascara="moeda"
+                                        className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100 disabled:bg-slate-800 disabled:text-slate-400" 
+                                    />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-300 mb-1">Taxa de Juros (% ao mês)</label>
@@ -176,7 +188,7 @@ const InterestCalculatorPage: React.FC<InterestCalculatorPageProps> = ({ clients
                             <div className="bg-slate-900/50 p-3 rounded-lg text-center">
                                 <p className="text-sm text-slate-400">Resumo dos Parâmetros</p>
                                 <div className="flex justify-around items-center mt-1 text-xs">
-                                    <span>{formatCurrency(parseFloat(capital) || 0)}</span>
+                                    <span>{formatCurrency(parseCurrencyInput(capital))}</span>
                                     <ChevronsRight className="w-4 h-4 text-slate-600"/>
                                     <span>{(parseFloat(taxa) || 0).toFixed(2)}% a.m.</span>
                                     <ChevronsRight className="w-4 h-4 text-slate-600"/>

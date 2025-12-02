@@ -5,7 +5,7 @@ import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import { ArrowRightLeft, CheckCircle2, CreditCard, Trash2, Search, ListFilter, Calendar } from 'lucide-react';
 import type { Operation, NewOperation, Client, OperationStatus } from '../types';
-import { formatDate, formatCurrency } from '../lib/utils';
+import { formatDate, formatCurrency, formatCurrencyInput, parseCurrencyInput } from '../lib/utils';
 import { useNotification } from '../components/Notification';
 import EmptyState from '../components/EmptyState';
 
@@ -54,7 +54,7 @@ const OperationForm: React.FC<{
     }, [preselectedClientId, setPreselectedClientId]);
 
     React.useEffect(() => {
-        const nominalValue = parseFloat(formData.nominalValue) || 0;
+        const nominalValue = parseCurrencyInput(formData.nominalValue);
         const taxa = parseFloat(formData.taxa) || 0;
 
         if (nominalValue > 0 && taxa > 0) {
@@ -93,7 +93,7 @@ const OperationForm: React.FC<{
     }, [clientId, clients, operations]);
 
     React.useEffect(() => {
-        const nominalVal = parseFloat(formData.nominalValue) || 0;
+        const nominalVal = parseCurrencyInput(formData.nominalValue);
         if (creditInfo && nominalVal > 0 && nominalVal > creditInfo.remaining) {
             setCreditWarning(`Atenção: O valor desta operação excede o limite de crédito restante de ${formatCurrency(creditInfo.remaining)}.`);
         } else {
@@ -103,14 +103,17 @@ const OperationForm: React.FC<{
 
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
+        const { name, value, dataset } = e.target;
         if (name === 'clientId') {
             setClientId(value);
         } else {
+            let finalValue = value;
+            if (dataset.mascara === 'moeda') {
+                finalValue = formatCurrencyInput(value);
+            }
             setFormData(prev => ({ 
                 ...prev, 
-                // Don't parse float here, keep as string to allow empty input
-                [name]: value 
+                [name]: finalValue 
             }));
         }
     };
@@ -122,7 +125,7 @@ const OperationForm: React.FC<{
             return;
         }
         
-        const nominalVal = parseFloat(formData.nominalValue);
+        const nominalVal = parseCurrencyInput(formData.nominalValue);
         if (isNaN(nominalVal) || nominalVal <= 0) {
              addNotification("O valor nominal deve ser maior que zero.", "error");
              return;
@@ -172,7 +175,16 @@ const OperationForm: React.FC<{
                 </div>
                  <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Valor Nominal (R$)</label>
-                    <input type="number" step="0.01" name="nominalValue" value={formData.nominalValue} onChange={handleChange} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" required />
+                    <input 
+                        type="text" 
+                        inputMode="numeric"
+                        name="nominalValue" 
+                        value={formData.nominalValue} 
+                        onChange={handleChange} 
+                        data-mascara="moeda"
+                        className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" 
+                        required 
+                    />
                 </div>
                  {creditWarning && (
                     <div className="md:col-span-2 text-center text-sm text-amber-400 bg-amber-900/50 p-2 rounded-md">

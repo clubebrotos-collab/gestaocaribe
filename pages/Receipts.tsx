@@ -5,7 +5,7 @@ import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import { CreditCard, Trash2, Calendar, Banknote, StickyNote } from 'lucide-react';
 import type { Recebimento, NewRecebimento, Operation, FormaPagamento } from '../types';
-import { formatDate, formatCurrency } from '../lib/utils';
+import { formatDate, formatCurrency, formatCurrencyInput, parseCurrencyInput } from '../lib/utils';
 import { useNotification } from '../components/Notification';
 import EmptyState from '../components/EmptyState';
 
@@ -55,9 +55,9 @@ const ReceiptForm: React.FC<{
     React.useEffect(() => {
         if (selectedOperation) {
             setSummaryKey(k => k + 1);
-            setTotalRecebido(outstandingBalance.total > 0 ? outstandingBalance.total.toString() : '');
-            setPrincipalPago(outstandingBalance.principal > 0 ? parseFloat(outstandingBalance.principal.toFixed(2)).toString() : '');
-            setJurosPago(outstandingBalance.juros > 0 ? parseFloat(outstandingBalance.juros.toFixed(2)).toString() : '');
+            setTotalRecebido(outstandingBalance.total > 0 ? formatCurrencyInput((outstandingBalance.total * 100).toFixed(0)) : '');
+            setPrincipalPago(outstandingBalance.principal > 0 ? formatCurrencyInput((outstandingBalance.principal * 100).toFixed(0)) : '');
+            setJurosPago(outstandingBalance.juros > 0 ? formatCurrencyInput((outstandingBalance.juros * 100).toFixed(0)) : '');
             
             setIsInterestOnly(false); 
         } else {
@@ -74,36 +74,37 @@ const ReceiptForm: React.FC<{
             setJurosPago(totalRecebido);
         } else if (selectedOperation) {
              // Recalculate default split if unchecked
-            const numTotal = parseFloat(totalRecebido) || 0;
+            const numTotal = parseCurrencyInput(totalRecebido);
             if (outstandingBalance.total > 0) {
                 const cappedValue = Math.min(numTotal, outstandingBalance.total);
                 const jurosRatio = outstandingBalance.juros / outstandingBalance.total;
                 const allocatedJuros = parseFloat((cappedValue * jurosRatio).toFixed(2));
                 const allocatedPrincipal = parseFloat((cappedValue - allocatedJuros).toFixed(2));
                 
-                setJurosPago(allocatedJuros > 0 ? allocatedJuros.toString() : '');
-                setPrincipalPago(allocatedPrincipal > 0 ? allocatedPrincipal.toString() : '');
+                setJurosPago(allocatedJuros > 0 ? formatCurrencyInput((allocatedJuros * 100).toFixed(0)) : '');
+                setPrincipalPago(allocatedPrincipal > 0 ? formatCurrencyInput((allocatedPrincipal * 100).toFixed(0)) : '');
             }
         }
     }, [isInterestOnly, totalRecebido, outstandingBalance, selectedOperation]);
 
     const handleTotalChange = (value: string) => {
-        setTotalRecebido(value);
-        const numValue = parseFloat(value) || 0;
+        const formattedValue = formatCurrencyInput(value);
+        setTotalRecebido(formattedValue);
+        const numValue = parseCurrencyInput(formattedValue);
 
         const cappedValue = isInterestOnly ? numValue : Math.min(numValue, outstandingBalance.total);
         
         if (isInterestOnly) {
             setPrincipalPago('');
-            setJurosPago(value); // If Interest Only, Juros follows Total input
+            setJurosPago(formattedValue); // If Interest Only, Juros follows Total input
         } else {
             if (outstandingBalance.total > 0) {
                 const jurosRatio = outstandingBalance.juros / outstandingBalance.total;
                 const allocatedJuros = parseFloat((cappedValue * jurosRatio).toFixed(2));
                 const allocatedPrincipal = parseFloat((cappedValue - allocatedJuros).toFixed(2));
                 
-                setJurosPago(allocatedJuros > 0 ? allocatedJuros.toString() : '');
-                setPrincipalPago(allocatedPrincipal > 0 ? allocatedPrincipal.toString() : '');
+                setJurosPago(allocatedJuros > 0 ? formatCurrencyInput((allocatedJuros * 100).toFixed(0)) : '');
+                setPrincipalPago(allocatedPrincipal > 0 ? formatCurrencyInput((allocatedPrincipal * 100).toFixed(0)) : '');
             } else {
                 setJurosPago('');
                 setPrincipalPago('');
@@ -113,28 +114,30 @@ const ReceiptForm: React.FC<{
     
     const handlePrincipalChange = (value: string) => {
         if (isInterestOnly) return;
-        const numValue = parseFloat(value) || 0;
+        const formattedValue = formatCurrencyInput(value);
+        const numValue = parseCurrencyInput(formattedValue);
         const cappedValue = Math.min(numValue, outstandingBalance.principal);
         
-        setPrincipalPago(value);
+        setPrincipalPago(formattedValue);
         
         // Recalculate Total based on new Principal + existing Juros
-        const numJuros = parseFloat(jurosPago) || 0;
+        const numJuros = parseCurrencyInput(jurosPago);
         const newTotal = parseFloat((cappedValue + numJuros).toFixed(2));
-        setTotalRecebido(newTotal > 0 ? newTotal.toString() : '');
+        setTotalRecebido(newTotal > 0 ? formatCurrencyInput((newTotal * 100).toFixed(0)) : '');
     }
 
     const handleJurosChange = (value: string) => {
-        setJurosPago(value);
-        const numValue = parseFloat(value) || 0;
+        const formattedValue = formatCurrencyInput(value);
+        setJurosPago(formattedValue);
+        const numValue = parseCurrencyInput(formattedValue);
 
         if (isInterestOnly) {
-            setTotalRecebido(value);
+            setTotalRecebido(formattedValue);
         } else {
             const cappedValue = Math.min(numValue, outstandingBalance.juros);
-            const numPrincipal = parseFloat(principalPago) || 0;
+            const numPrincipal = parseCurrencyInput(principalPago);
             const newTotal = parseFloat((numPrincipal + cappedValue).toFixed(2));
-            setTotalRecebido(newTotal > 0 ? newTotal.toString() : '');
+            setTotalRecebido(newTotal > 0 ? formatCurrencyInput((newTotal * 100).toFixed(0)) : '');
         }
     }
 
@@ -145,7 +148,7 @@ const ReceiptForm: React.FC<{
             addNotification('Por favor, selecione uma operação.', 'error');
             return;
         }
-        const numTotal = parseFloat(totalRecebido) || 0;
+        const numTotal = parseCurrencyInput(totalRecebido);
         
         if (numTotal <= 0) {
             addNotification('O valor recebido deve ser maior que zero.', 'error');
@@ -155,8 +158,8 @@ const ReceiptForm: React.FC<{
             operationId: parseInt(operationId),
             data_recebimento: dataRecebimento,
             valor_total_recebido: numTotal,
-            valor_principal_pago: parseFloat(principalPago) || 0,
-            valor_juros_pago: parseFloat(jurosPago) || 0,
+            valor_principal_pago: parseCurrencyInput(principalPago) || 0,
+            valor_juros_pago: parseCurrencyInput(jurosPago) || 0,
             forma_pagamento: formaPagamento,
             observacoes: observacoes
         });
@@ -197,7 +200,14 @@ const ReceiptForm: React.FC<{
 
                 <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Valor Total Recebido (R$)</label>
-                    <input type="number" step="0.01" value={totalRecebido} onChange={e => handleTotalChange(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" />
+                    <input 
+                        type="text" 
+                        inputMode="numeric"
+                        value={totalRecebido} 
+                        onChange={e => handleTotalChange(e.target.value)} 
+                        data-mascara="moeda"
+                        className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" 
+                    />
                 </div>
                  <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Forma de Pagamento</label>
@@ -228,17 +238,25 @@ const ReceiptForm: React.FC<{
                          <div>
                             <label className="block text-xs font-medium text-slate-400 mb-1">Principal Pago (R$)</label>
                             <input 
-                                type="number" 
-                                step="0.01" 
+                                type="text" 
+                                inputMode="numeric"
                                 value={principalPago} 
                                 onChange={e => handlePrincipalChange(e.target.value)} 
                                 disabled={isInterestOnly}
+                                data-mascara="moeda"
                                 className={`w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100 ${isInterestOnly ? 'opacity-50 cursor-not-allowed' : ''}`} 
                             />
                         </div>
                          <div>
                             <label className="block text-xs font-medium text-slate-400 mb-1">Juros Pagos (R$)</label>
-                            <input type="number" step="0.01" value={jurosPago} onChange={e => handleJurosChange(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" />
+                            <input 
+                                type="text" 
+                                inputMode="numeric"
+                                value={jurosPago} 
+                                onChange={e => handleJurosChange(e.target.value)} 
+                                data-mascara="moeda"
+                                className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100" 
+                            />
                         </div>
                     </div>
                 </div>

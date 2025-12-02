@@ -5,7 +5,7 @@ import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import { Users, UserPlus, Eye, Pencil, Trash2, Search, TrendingUp, CircleDollarSign, TriangleAlert, CreditCard, Phone, Mail, MapPin } from 'lucide-react';
 import type { ClientWithOperationCount, NewClient, Client, Operation, Recebimento } from '../types';
-import { formatDate, formatCurrency } from '../lib/utils';
+import { formatDate, formatCurrency, formatCurrencyInput, parseCurrencyInput } from '../lib/utils';
 import { differenceInDays, parseISO, isToday, isPast } from 'date-fns';
 import { useNotification } from '../components/Notification';
 import EmptyState from '../components/EmptyState';
@@ -28,8 +28,8 @@ const ClientForm: React.FC<{ client?: Client | null; onSubmit: (data: NewClient 
         email: client?.email || '',
         telefone: client?.telefone || '',
         endereco: client?.endereco || '',
-        // If undefined OR 0, default to empty string
-        limite_credito: (client?.limite_credito !== undefined && client.limite_credito !== 0) ? client.limite_credito.toString() : '',
+        // Format initial value if it exists
+        limite_credito: (client?.limite_credito !== undefined && client.limite_credito !== 0) ? formatCurrency(client.limite_credito) : '',
         taxa_juros_mensal: (client?.taxa_juros_mensal !== undefined && client.taxa_juros_mensal !== 0) ? client.taxa_juros_mensal.toString() : '',
     });
     const [errors, setErrors] = useState<Partial<Record<keyof typeof formData, string>>>({});
@@ -67,7 +67,8 @@ const ClientForm: React.FC<{ client?: Client | null; onSubmit: (data: NewClient 
             newErrors.email = 'Formato de email inválido.';
         }
         
-        const limite = parseFloat(formData.limite_credito.toString());
+        // Parse currency back to number for validation
+        const limite = parseCurrencyInput(formData.limite_credito);
         if (formData.limite_credito !== '' && (isNaN(limite) || limite < 0)) {
             newErrors.limite_credito = 'O limite de crédito não pode ser negativo.';
         }
@@ -81,7 +82,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSubmit: (data: NewClient 
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-        const { name, value } = e.target;
+        const { name, value, dataset } = e.target;
         
         if (errors[name as keyof typeof errors]) {
             setErrors(prev => {
@@ -91,11 +92,15 @@ const ClientForm: React.FC<{ client?: Client | null; onSubmit: (data: NewClient 
             });
         }
         
+        let finalValue = value;
+
         if (name === 'cpf_cnpj') {
-            setFormData({ ...formData, [name]: maskCpfCnpj(value) });
-        } else {
-            setFormData({ ...formData, [name]: value });
+            finalValue = maskCpfCnpj(value);
+        } else if (dataset.mascara === 'moeda') {
+            finalValue = formatCurrencyInput(value);
         }
+
+        setFormData({ ...formData, [name]: finalValue });
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -108,7 +113,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSubmit: (data: NewClient 
 
         const preparedData = {
             ...formData,
-            limite_credito: formData.limite_credito === '' ? 0 : parseFloat(formData.limite_credito.toString()),
+            limite_credito: parseCurrencyInput(formData.limite_credito), // Parse before saving
             taxa_juros_mensal: formData.taxa_juros_mensal === '' ? 0 : parseFloat(formData.taxa_juros_mensal.toString()),
         };
 
@@ -148,7 +153,15 @@ const ClientForm: React.FC<{ client?: Client | null; onSubmit: (data: NewClient 
                 </div>
                  <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Limite de Crédito (R$)</label>
-                    <input type="number" step="0.01" min="0" name="limite_credito" value={formData.limite_credito} onChange={handleChange} className={`${inputBaseClasses} ${errors.limite_credito ? inputErrorClasses : inputNormalClasses}`} />
+                    <input 
+                        type="text" 
+                        inputMode="numeric"
+                        name="limite_credito" 
+                        value={formData.limite_credito} 
+                        onChange={handleChange} 
+                        data-mascara="moeda"
+                        className={`${inputBaseClasses} ${errors.limite_credito ? inputErrorClasses : inputNormalClasses}`} 
+                    />
                      {errors.limite_credito && <p className="text-red-400 text-xs mt-1">{errors.limite_credito}</p>}
                 </div>
                 <div>
