@@ -47,6 +47,7 @@ CREATE TABLE operations (
   due_date DATE,
   taxa NUMERIC(5, 2),
   status TEXT CHECK (status IN ('aberto', 'pago', 'atrasado')) DEFAULT 'aberto',
+  observacoes TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 

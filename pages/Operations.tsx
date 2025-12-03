@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import Card from '../components/Card';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
-import { ArrowRightLeft, CheckCircle2, CreditCard, Trash2, Search, ListFilter, Calendar, Layers } from 'lucide-react';
+import { ArrowRightLeft, CheckCircle2, CreditCard, Trash2, Search, ListFilter, Calendar, Layers, StickyNote } from 'lucide-react';
 import type { Operation, NewOperation, Client, OperationStatus, OperationType } from '../types';
 import { formatDate, formatCurrency, formatCurrencyInput, parseCurrencyInput } from '../lib/utils';
 import { useNotification } from '../components/Notification';
@@ -37,6 +37,7 @@ const OperationForm: React.FC<{
         dueDate: '',
         taxa: '',
         installments: '1', // Default 1 installment
+        observacoes: ''
     });
     const [clientId, setClientId] = useState<string>("");
     const [netValue, setNetValue] = useState(0);
@@ -103,7 +104,7 @@ const OperationForm: React.FC<{
     }, [formData.nominalValue, creditInfo]);
 
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, dataset } = e.target;
         if (name === 'clientId') {
             setClientId(value);
@@ -226,6 +227,17 @@ const OperationForm: React.FC<{
                         <p className="text-sm text-slate-400">Valor Líquido Total</p>
                         <p className="font-bold text-lg text-emerald-400">{formatCurrency(netValue)}</p>
                     </div>
+                </div>
+                <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Observações</label>
+                    <textarea 
+                        name="observacoes"
+                        value={formData.observacoes} 
+                        onChange={handleChange} 
+                        rows={2}
+                        placeholder="Detalhes adicionais sobre a operação..."
+                        className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100 resize-none" 
+                    />
                 </div>
             </div>
              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-4">
@@ -363,7 +375,17 @@ const OperationsPage: React.FC<OperationsPageProps> = ({ operations, clients, on
                                 <tr key={op.id} className="border-b border-slate-800 hover:bg-slate-800/50 transition-colors">
                                     <td className="p-4 font-semibold text-slate-100">{op.clientName}</td>
                                     <td className="p-4">
-                                        <div className="font-mono text-sm">{op.titleNumber}</div>
+                                        <div className="font-mono text-sm flex items-center gap-2">
+                                            {op.titleNumber}
+                                            {op.observacoes && (
+                                                <div className="relative group">
+                                                    <StickyNote className="w-3 h-3 text-amber-400 cursor-help" />
+                                                    <div className="absolute left-0 bottom-full mb-1 hidden group-hover:block w-48 p-2 bg-slate-900 border border-slate-700 rounded shadow-xl z-10 text-xs text-slate-200 whitespace-normal">
+                                                        {op.observacoes}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                         <div className="flex items-center gap-1 text-xs text-slate-400 capitalize">
                                             {op.type === 'parcelamento' && <Layers className="w-3 h-3" />}
                                             {op.type}
@@ -462,6 +484,13 @@ const OperationsPage: React.FC<OperationsPageProps> = ({ operations, clients, on
                                     <p className="font-mono text-emerald-400 font-semibold">{formatCurrency(op.netValue)}</p>
                                 </div>
                             </div>
+
+                            {op.observacoes && (
+                                <div className="flex items-start gap-2 text-xs text-slate-400 bg-slate-800/80 p-2 rounded">
+                                    <StickyNote className="w-3 h-3 mt-0.5 shrink-0"/>
+                                    <p>{op.observacoes}</p>
+                                </div>
+                            )}
 
                             <div className="flex justify-end gap-2 pt-2 border-t border-slate-700/50">
                                 {op.status !== 'pago' && (

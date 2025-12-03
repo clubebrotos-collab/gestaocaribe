@@ -33,6 +33,7 @@ export interface Operation {
   dueDate: string; // YYYY-MM-DD
   taxa: number;
   status: OperationStatus;
+  observacoes?: string;
 }
 
 export type NewOperation = Omit<Operation, 'id' | 'clientName' | 'netValue' | 'status'> & {

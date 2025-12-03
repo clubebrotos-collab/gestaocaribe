@@ -79,7 +79,8 @@ const App: React.FC = () => {
               issueDate: op.issue_date,
               dueDate: op.due_date,
               taxa: op.taxa,
-              status: op.status
+              status: op.status,
+              observacoes: op.observacoes
           })).sort((a,b) => b.id - a.id);
           
           // Auto-update overdue status logic
@@ -274,7 +275,8 @@ const App: React.FC = () => {
                     due_date: dueDate,
                     taxa: opData.taxa,
                     status: 'aberto',
-                    client_id: (opData.clientId && opData.clientId > 0) ? opData.clientId : null
+                    client_id: (opData.clientId && opData.clientId > 0) ? opData.clientId : null,
+                    observacoes: opData.observacoes
                 };
                 bulkOperations.push(payload);
             }
@@ -299,6 +301,7 @@ const App: React.FC = () => {
                 dueDate: d.due_date,
                 taxa: d.taxa,
                 status: d.status,
+                observacoes: d.observacoes
             }));
 
             setOperations(prev => [...newOps.sort((a,b) => b.id - a.id), ...prev]);
@@ -323,7 +326,8 @@ const App: React.FC = () => {
                 issue_date: opData.issueDate,
                 due_date: opData.dueDate,
                 taxa: opData.taxa,
-                status: 'aberto'
+                status: 'aberto',
+                observacoes: opData.observacoes
             };
 
             if (opData.clientId && opData.clientId > 0) {
@@ -352,6 +356,7 @@ const App: React.FC = () => {
                 dueDate: data.due_date,
                 taxa: data.taxa,
                 status: data.status,
+                observacoes: data.observacoes
             };
 
             setOperations(prev => [newOperation, ...prev]);
