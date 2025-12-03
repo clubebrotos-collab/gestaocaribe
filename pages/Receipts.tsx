@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import Card from '../components/Card';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
-import { CreditCard, Trash2, Calendar, Banknote, StickyNote, Clock } from 'lucide-react';
+import { CreditCard, Trash2, Calendar, Banknote, StickyNote, Clock, Search } from 'lucide-react';
 import type { Recebimento, NewRecebimento, Operation, FormaPagamento } from '../types';
 import { formatDate, formatCurrency, formatCurrencyInput, parseCurrencyInput } from '../lib/utils';
 import { useNotification } from '../components/Notification';
@@ -330,6 +330,7 @@ const ReceiptsPage: React.FC<ReceiptsPageProps> = ({ receipts, operations, onAdd
     const [isFormModalOpen, setIsFormModalOpen] = useState(false);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
     const [receiptToDelete, setReceiptToDelete] = useState<number | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
     const { addNotification } = useNotification();
 
     const handleFormSubmit = (data: NewRecebimento) => {
@@ -356,6 +357,20 @@ const ReceiptsPage: React.FC<ReceiptsPageProps> = ({ receipts, operations, onAdd
         return operations.find(op => op.id === operationId);
     }
 
+    const filteredReceipts = useMemo(() => {
+        if (!searchTerm) return receipts;
+        const lowerTerm = searchTerm.toLowerCase();
+
+        return receipts.filter(receipt => {
+            const op = getOperationInfo(receipt.operationId);
+            const clientName = op?.clientName || '';
+            const titleNumber = op?.titleNumber || '';
+
+            return clientName.toLowerCase().includes(lowerTerm) ||
+                   titleNumber.toLowerCase().includes(lowerTerm);
+        });
+    }, [receipts, operations, searchTerm]);
+
     return (
         <div className="space-y-6 sm:space-y-8">
             <header className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
@@ -370,6 +385,19 @@ const ReceiptsPage: React.FC<ReceiptsPageProps> = ({ receipts, operations, onAdd
             </header>
 
             <Card padding="p-4 sm:p-6">
+                 <div className="mb-4 sm:mb-6">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                        <input
+                            type="text"
+                            placeholder="Buscar por cliente ou nº do título..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full bg-slate-900/50 border border-slate-600 rounded-md py-2 pl-10 pr-4 text-slate-100 placeholder-slate-500"
+                        />
+                    </div>
+                </div>
+
                  {/* Desktop View */}
                 <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left">
@@ -385,7 +413,7 @@ const ReceiptsPage: React.FC<ReceiptsPageProps> = ({ receipts, operations, onAdd
                             </tr>
                         </thead>
                         <tbody>
-                            {receipts.length > 0 ? receipts.map(receipt => {
+                            {filteredReceipts.length > 0 ? filteredReceipts.map(receipt => {
                                 const opInfo = getOperationInfo(receipt.operationId);
                                 return (
                                     <tr key={receipt.id} className="border-b border-slate-800 hover:bg-slate-800/50 transition-colors">
@@ -415,9 +443,9 @@ const ReceiptsPage: React.FC<ReceiptsPageProps> = ({ receipts, operations, onAdd
                                     <td colSpan={7}>
                                       <EmptyState 
                                         icon={<CreditCard className="w-8 h-8" />}
-                                        title="Nenhum recebimento registrado"
-                                        description="Você ainda não registrou nenhum pagamento."
-                                        actionText="Registrar Novo Recebimento"
+                                        title="Nenhum recebimento encontrado"
+                                        description={searchTerm ? "Nenhum resultado para sua busca." : "Você ainda não registrou nenhum pagamento."}
+                                        actionText={!searchTerm ? "Registrar Novo Recebimento" : undefined}
                                         onActionClick={() => setIsFormModalOpen(true)}
                                       />
                                     </td>
@@ -429,7 +457,7 @@ const ReceiptsPage: React.FC<ReceiptsPageProps> = ({ receipts, operations, onAdd
 
                 {/* Mobile View Cards */}
                 <div className="md:hidden space-y-4">
-                    {receipts.length > 0 ? receipts.map(receipt => {
+                    {filteredReceipts.length > 0 ? filteredReceipts.map(receipt => {
                         const opInfo = getOperationInfo(receipt.operationId);
                         return (
                             <div key={receipt.id} className="bg-slate-800/50 p-4 rounded-lg border border-slate-700 flex flex-col gap-3">
@@ -471,8 +499,8 @@ const ReceiptsPage: React.FC<ReceiptsPageProps> = ({ receipts, operations, onAdd
                         <EmptyState 
                             icon={<CreditCard className="w-8 h-8" />}
                             title="Nenhum recebimento"
-                            description="Nenhum pagamento registrado."
-                            actionText="Novo Recebimento"
+                            description={searchTerm ? "Nenhum resultado para sua busca." : "Nenhum pagamento registrado."}
+                            actionText={!searchTerm ? "Novo Recebimento" : undefined}
                             onActionClick={() => setIsFormModalOpen(true)}
                         />
                     )}
