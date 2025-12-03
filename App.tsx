@@ -184,12 +184,7 @@ const App: React.FC = () => {
     } catch (error: any) {
         console.error("Error adding client:", error);
         
-        let msg = `Erro ao adicionar cliente: ${error.message}`;
-        // Código 23505 é violação de constraint unique no Postgres
-        if (error.code === '23505' || error.message?.includes('clients_cpf_cnpj_key')) {
-            msg = "Já existe um cliente cadastrado com este CPF/CNPJ.";
-        }
-        
+        const msg = `Erro ao adicionar cliente: ${error.message}`;
         addNotification(msg, 'error');
         throw error; // Re-throw to be caught by the form
     }
@@ -216,11 +211,7 @@ const App: React.FC = () => {
     } catch (error: any) {
         console.error("Error updating client:", error);
         
-        let msg = `Erro ao atualizar cliente: ${error.message}`;
-        if (error.code === '23505' || error.message?.includes('clients_cpf_cnpj_key')) {
-            msg = "Este CPF/CNPJ já pertence a outro cliente.";
-        }
-        
+        const msg = `Erro ao atualizar cliente: ${error.message}`;
         addNotification(msg, 'error');
     }
   }, [addNotification]);
