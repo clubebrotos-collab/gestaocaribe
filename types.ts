@@ -53,6 +53,7 @@ export interface Recebimento {
 
 export type NewRecebimento = Omit<Recebimento, 'id'> & {
   newDueDate?: string; // Campo opcional para prorrogação de vencimento
+  isInterestOnly?: boolean; // Flag para identificar pagamento apenas de juros
 };
 
 export interface User {

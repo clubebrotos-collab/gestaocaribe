@@ -2,33 +2,44 @@
 import React, { useMemo } from 'react';
 import Card from '../components/Card';
 import { Banknote, TrendingUp, TriangleAlert, CalendarDays, PieChart as PieChartIcon, Layers } from 'lucide-react';
-import type { Operation, OperationStatus } from '../types';
+import type { Operation, OperationStatus, Recebimento } from '../types';
 import { formatCurrency, formatDate } from '../lib/utils';
 import { differenceInDays, parseISO, isToday, isThisWeek, isPast } from 'date-fns';
 import PieChart from '../components/PieChart';
 
 interface DashboardProps {
     operations: Operation[];
+    receipts: Recebimento[];
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ operations }) => {
+const Dashboard: React.FC<DashboardProps> = ({ operations, receipts }) => {
 
-    // Main Stats (excluding Parcelamento for clarity, or including? Prompt said "separe dos demais")
-    // Let's filter out parcelamento for the main traditional view, and create a separate section
-    // Or keep total and just add a section. Usually total means everything.
-    // I will include everything in the top cards, but provide breakdown below.
-    
+    // Main Stats calculation
     const stats = useMemo(() => {
         const openOperations = operations.filter(op => op.status === 'aberto');
         const overdueOperations = operations.filter(op => op.status === 'atrasado');
 
+        // Helper to calculate actual remaining balance (Nominal - Paid Principal)
+        const getRemainingBalance = (op: Operation) => {
+            const paidPrincipal = receipts
+                .filter(r => r.operationId === op.id)
+                .reduce((sum, r) => sum + r.valor_principal_pago, 0);
+            return Math.max(0, op.nominalValue - paidPrincipal);
+        };
+
         const totalCapital = openOperations.reduce((sum, op) => sum + op.netValue, 0);
-        const totalReceivables = openOperations.reduce((sum, op) => sum + op.nominalValue, 0);
+        
+        // Receivables should reflect what is actually left to receive, not just nominal value
+        const totalReceivables = openOperations.reduce((sum, op) => sum + getRemainingBalance(op), 0);
+        
+        // Juros is simple estimate for now, or could be (Remaining Nominal - Remaining Capital) but staying simple:
         const interestToReceive = totalReceivables - totalCapital;
-        const delinquencyValue = overdueOperations.reduce((sum, op) => sum + op.nominalValue, 0);
+        
+        // Delinquency should only count the UNPAID part of the overdue operations
+        const delinquencyValue = overdueOperations.reduce((sum, op) => sum + getRemainingBalance(op), 0);
 
         return { totalCapital, totalReceivables, interestToReceive, delinquencyValue };
-    }, [operations]);
+    }, [operations, receipts]);
 
     const parcelamentoStats = useMemo(() => {
         const parcOps = operations.filter(op => op.type === 'parcelamento');

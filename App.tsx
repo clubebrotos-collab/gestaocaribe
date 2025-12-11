@@ -433,15 +433,17 @@ const App: React.FC = () => {
         const operation = operations.find(op => op.id === receiptData.operationId);
         if (operation) {
             
-            // Check for Date Extension (Prorrogação)
-            if (receiptData.newDueDate) {
+            // Check for Date Extension (Prorrogação) OR Interest Only (forces open)
+            if (receiptData.newDueDate || receiptData.isInterestOnly) {
                 // If extending date, update due date in DB and ensure status is 'aberto'
+                const updatePayload: any = { status: 'aberto' };
+                if (receiptData.newDueDate) {
+                    updatePayload.due_date = receiptData.newDueDate;
+                }
+
                 const { error: opUpdateError } = await supabase
                     .from('operations')
-                    .update({ 
-                        due_date: receiptData.newDueDate,
-                        status: 'aberto' 
-                    })
+                    .update(updatePayload)
                     .eq('id', operation.id);
 
                 if (opUpdateError) throw opUpdateError;
@@ -449,7 +451,11 @@ const App: React.FC = () => {
                 // Update local state
                 setOperations(prev => prev.map(op => 
                     op.id === operation.id 
-                    ? { ...op, dueDate: receiptData.newDueDate!, status: 'aberto' } 
+                    ? { 
+                        ...op, 
+                        dueDate: receiptData.newDueDate || op.dueDate, 
+                        status: 'aberto' // Force open status on interest payment/extension
+                      } 
                     : op
                 ));
 
@@ -622,7 +628,7 @@ const App: React.FC = () => {
 
     switch (activePage) {
       case 'Painel de Controle':
-        return <Dashboard operations={operations} />;
+        return <Dashboard operations={operations} receipts={receipts} />;
       case 'Clientes':
         return <ClientsPage 
                   clients={clientsWithOperationCounts}
@@ -666,10 +672,10 @@ const App: React.FC = () => {
             onDeleteUser={handleDeleteUser}
           />
         ) : (
-          <Dashboard operations={operations} />
+          <Dashboard operations={operations} receipts={receipts} />
         );
       default:
-        return <Dashboard operations={operations} />;
+        return <Dashboard operations={operations} receipts={receipts} />;
     }
   };
 

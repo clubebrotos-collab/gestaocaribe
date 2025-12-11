@@ -173,10 +173,15 @@ const ReceiptForm: React.FC<{
             valor_principal_pago: parseCurrencyInput(principalPago) || 0,
             valor_juros_pago: parseCurrencyInput(jurosPago) || 0,
             forma_pagamento: formaPagamento,
-            observacoes: observacoes
+            observacoes: observacoes,
+            isInterestOnly: isInterestOnly
         };
 
-        if (isInterestOnly && newDueDate) {
+        if (isInterestOnly) {
+            if (!newDueDate) {
+                addNotification('Para pagamentos apenas de juros, é obrigatório definir a nova data de vencimento (Prorrogação).', 'error');
+                return;
+            }
             submitData.newDueDate = newDueDate;
             // Append note about extension if not already present
             if (!observacoes.toLowerCase().includes('prorrogação')) {
@@ -250,7 +255,7 @@ const ReceiptForm: React.FC<{
                         className="w-4 h-4 text-brand-600 bg-slate-700 border-slate-600 rounded focus:ring-brand-500 focus:ring-2"
                     />
                     <label htmlFor="interestOnly" className="text-sm font-medium text-slate-200 cursor-pointer select-none">
-                        Amortizar apenas Juros (Não abater do Principal)
+                        Amortizar apenas Juros (Prorrogação / Sem abater Principal)
                     </label>
                 </div>
 
@@ -258,16 +263,17 @@ const ReceiptForm: React.FC<{
                     <div className="md:col-span-2 bg-sky-900/20 p-3 rounded-md border border-sky-700/30 animate-fade-in-up">
                         <label className="block text-sm font-medium text-sky-400 mb-1 flex items-center gap-2">
                             <Clock className="w-4 h-4" />
-                            Prorrogar Vencimento Para
+                            Prorrogar Vencimento Para <span className="text-red-400">*</span>
                         </label>
                         <input 
                             type="date" 
                             value={newDueDate} 
                             onChange={e => setNewDueDate(e.target.value)} 
                             className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-slate-100 focus:ring-sky-500 focus:border-sky-500" 
+                            required={isInterestOnly}
                         />
                         <p className="text-xs text-slate-400 mt-1">
-                            A data de vencimento da operação será atualizada para esta data.
+                            A data de vencimento da operação será atualizada e o status voltará para "Aberto".
                         </p>
                     </div>
                 )}
