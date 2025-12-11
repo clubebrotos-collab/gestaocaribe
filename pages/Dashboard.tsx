@@ -14,31 +14,50 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ operations, receipts }) => {
 
-    // Main Stats calculation
+    // Main Stats calculation - Lógica Refinada Item a Item
     const stats = useMemo(() => {
-        const openOperations = operations.filter(op => op.status === 'aberto');
-        const overdueOperations = operations.filter(op => op.status === 'atrasado');
+        let totalReceivables = 0; // Total Geral a Receber (Principal + Juros) de Títulos Ativos
+        let interestToReceive = 0; // Apenas a fatia de Juros a Receber
+        let delinquencyValue = 0; // Valor Total em Atraso (Principal + Juros)
+        let activeCapital = 0; // Capital "Na Rua" (Principal Não Pago)
 
-        // Helper to calculate actual remaining balance (Nominal - Paid Principal)
-        const getRemainingBalance = (op: Operation) => {
-            const paidPrincipal = receipts
-                .filter(r => r.operationId === op.id)
-                .reduce((sum, r) => sum + r.valor_principal_pago, 0);
-            return Math.max(0, op.nominalValue - paidPrincipal);
+        // Filtra apenas operações que não foram totalmente quitadas
+        const activeOperations = operations.filter(op => op.status === 'aberto' || op.status === 'atrasado');
+
+        activeOperations.forEach(op => {
+            // Soma os pagamentos específicos desta operação
+            const opReceipts = receipts.filter(r => r.operationId === op.id);
+            const paidPrincipal = opReceipts.reduce((sum, r) => sum + r.valor_principal_pago, 0);
+            const paidInterest = opReceipts.reduce((sum, r) => sum + r.valor_juros_pago, 0);
+
+            // Calcula os componentes originais
+            const originalInterest = op.nominalValue - op.netValue;
+
+            // Calcula o restante (Floor em 0 para evitar negativos se houver superpagamento ou ajustes manuais)
+            const remainingPrincipal = Math.max(0, op.netValue - paidPrincipal);
+            const remainingInterest = Math.max(0, originalInterest - paidInterest);
+            
+            const currentDebt = remainingPrincipal + remainingInterest;
+
+            // Se a operação está ATRASADA, soma na Inadimplência
+            // Se foi feito pagamento "Apenas Juros" (Prorrogação), o App.tsx muda o status para 'aberto', 
+            // logo ele NÃO entrará neste if, satisfazendo a regra de negócio.
+            if (op.status === 'atrasado') {
+                delinquencyValue += currentDebt;
+            }
+
+            // Acumula nos totais gerais da carteira ativa
+            totalReceivables += currentDebt;
+            activeCapital += remainingPrincipal;
+            interestToReceive += remainingInterest;
+        });
+
+        return { 
+            activeCapital, // Substitui o antigo "Total Capital" estático
+            totalReceivables, 
+            interestToReceive, 
+            delinquencyValue 
         };
-
-        const totalCapital = openOperations.reduce((sum, op) => sum + op.netValue, 0);
-        
-        // Receivables should reflect what is actually left to receive, not just nominal value
-        const totalReceivables = openOperations.reduce((sum, op) => sum + getRemainingBalance(op), 0);
-        
-        // Juros is simple estimate for now, or could be (Remaining Nominal - Remaining Capital) but staying simple:
-        const interestToReceive = totalReceivables - totalCapital;
-        
-        // Delinquency should only count the UNPAID part of the overdue operations
-        const delinquencyValue = overdueOperations.reduce((sum, op) => sum + getRemainingBalance(op), 0);
-
-        return { totalCapital, totalReceivables, interestToReceive, delinquencyValue };
     }, [operations, receipts]);
 
     const parcelamentoStats = useMemo(() => {
@@ -115,8 +134,8 @@ const Dashboard: React.FC<DashboardProps> = ({ operations, receipts }) => {
                            <Banknote className="w-6 h-6 text-brand-400" />
                         </div>
                         <div className="ml-4">
-                            <p className="text-sm text-slate-400">Capital Aplicado (Total)</p>
-                            <p className="text-2xl font-bold text-slate-100">{formatCurrency(stats.totalCapital)}</p>
+                            <p className="text-sm text-slate-400">Capital Ativo (Na Rua)</p>
+                            <p className="text-2xl font-bold text-slate-100">{formatCurrency(stats.activeCapital)}</p>
                         </div>
                     </div>
                 </Card>
@@ -138,7 +157,7 @@ const Dashboard: React.FC<DashboardProps> = ({ operations, receipts }) => {
                         </div>
                         <div className="ml-4">
                             <p className="text-sm text-slate-400">Juros a Receber</p>
-                            <p className="text-2xl font-bold text-slate-100">{formatCurrency(stats.interestToReceive)}</p>
+                            <p className="text-2xl font-bold text-emerald-400">{formatCurrency(stats.interestToReceive)}</p>
                         </div>
                     </div>
                 </Card>
@@ -149,7 +168,7 @@ const Dashboard: React.FC<DashboardProps> = ({ operations, receipts }) => {
                         </div>
                         <div className="ml-4">
                             <p className="text-sm text-slate-400">Inadimplência</p>
-                            <p className="text-2xl font-bold text-slate-100">{formatCurrency(stats.delinquencyValue)}</p>
+                            <p className="text-2xl font-bold text-red-400">{formatCurrency(stats.delinquencyValue)}</p>
                         </div>
                     </div>
                 </Card>
